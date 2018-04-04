@@ -3,6 +3,7 @@
 # fhem bridge to MySensors (see http://mysensors.org)
 #
 # Copyright (C) 2014 Norbert Truchsess
+# Copyright (C) 2018 Hauswart@forum.fhem.de
 #
 #     This file is part of fhem.
 #
@@ -19,7 +20,7 @@
 #     You should have received a copy of the GNU General Public License
 #     along with fhem.  If not, see <http://www.gnu.org/licenses/>.
 #
-# $Id: 10_MYSENSORS_DEVICE.pm 15225 2017-10-10 13:31:10Z Hauswart $
+# $Id: 10_MYSENSORS_DEVICE.pm working version $
 #
 ##############################################
 
@@ -49,6 +50,8 @@ sub MYSENSORS_DEVICE_Initialize($) {
     "mapReadingType_.+ " .
     "mapReading_.+ " .
     "requestAck:1 " . 
+	"timeoutAck ".
+	"timeoutAlive ".
     "IODev " .
     "showtime:0,1 " .
     $main::readingFnAttributes;
@@ -99,7 +102,7 @@ my %static_types = (
   S_POWER                 => { receives => [V_VAR1], sends => [V_WATT,V_KWH,V_VAR,V_VA,V_POWER_FACTOR,V_VAR1] }, # Power measuring device, like power meters
   S_HEATER                => { receives => [], sends => [V_HVAC_SETPOINT_HEAT,V_HVAC_FLOW_STATE,V_TEMP,V_STATUS] }, # Heater device
   S_DISTANCE              => { receives => [], sends => [V_DISTANCE,V_UNIT_PREFIX] }, # Distance sensor
-  S_LIGHT_LEVEL           => { receives => [], sends => [V_LIGHT_LEVEL] }, # Light sensor
+  S_LIGHT_LEVEL           => { receives => [], sends => [V_LIGHT_LEVEL,V_LEVEL] }, # Light sensor
   S_ARDUINO_NODE          => { receives => [], sends => [] }, # Arduino node device
   S_ARDUINO_REPEATER_NODE => { receives => [], sends => [] }, # Arduino repeating node device
   S_LOCK                  => { receives => [V_LOCK_STATUS], sends => [V_LOCK_STATUS] }, # Lock device
@@ -207,11 +210,13 @@ sub Define($$) {
 
   $hash->{readingMappings} = {};
   AssignIoPort($hash);
+  #refreshInternalMySTimer($hash,"Alive") if ($hash->{timeoutAlive});
 };
 
 sub UnDefine($) {
   my ($hash) = @_;
-
+  RemoveInternalTimer("timeoutAck:$name");
+  RemoveInternalTimer("timeoutAlive:$name");
   return undef;
 }
 
@@ -248,7 +253,10 @@ sub Set($@) {
           subType => $type,
           payload => $mappedValue,
         );
-        readingsSingleUpdate($hash,$setcommand->{var},$setcommand->{val},1) unless ($hash->{ack} or $hash->{IODev}->{ack});
+		unless ($hash->{ack} or $hash->{IODev}->{ack}) {
+			readingsSingleUpdate($hash,$setcommand->{var},$setcommand->{val},1);
+			refreshInternalMySTimer($hash,"Ack") if ($hash->{timeoutAck});
+		}
       };
       return "$command not defined: ".GP_Catch($@) if $@;
       last;
@@ -382,11 +390,29 @@ sub Attr($$$$) {
       }
       last;
     };
+	$attribute eq "timeoutAck" and do {
+      if ($command eq "set") {
+        $hash->{timeoutAck} = $value;
+      } else {
+        $hash->{timeoutAck} = 0;
+      }
+      last;
+    };
+	$attribute eq "timeoutAlive" and do {
+      if ($command eq "set" and $value) {
+        $hash->{timeoutAlive} = $value;
+		refreshInternalMySTimer($hash,"Alive");
+      } else {
+        $hash->{timeoutAlive} = 0;
+      }
+      last;
+    };
   }
 }
 
 sub onGatewayStarted($) {
   my ($hash) = @_;
+  refreshInternalMySTimer($hash,"Alive") if ($hash->{timeoutAlive});
 }
 
 sub onPresentationMessage($$) {
@@ -452,6 +478,8 @@ sub onSetMessage($$) {
     eval {
       my ($reading,$value) = rawToMappedReading($hash,$msg->{subType},$msg->{childId},$msg->{payload});
       readingsSingleUpdate($hash, $reading, $value, 1);
+	  refreshInternalMySTimer($hash,"Alive") if ($hash->{timeoutAlive});#update internal Timer
+	  RemoveInternalTimer("timeoutAck:$name") if $hash->{IODev}->{outstandingAck};
     };
     Log3 ($hash->{NAME}, 4, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_SET-message ".GP_Catch($@)) if $@;
   } else {
@@ -470,6 +498,7 @@ sub onRequestMessage($$) {
       subType => $msg->{subType},
       payload => ReadingsVal($hash->{NAME},$readingname,$val)
     );
+	#update internal Timer
   };
   Log3 ($hash->{NAME}, 4, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_REQ-message ".GP_Catch($@)) if $@;
 }
@@ -575,7 +604,8 @@ sub sendClientMessage($%) {
   $msg{radioId} = $hash->{radioId};
   $msg{ack} = $hash->{ack} unless defined $msg{ack};
   sendMessage($hash->{IODev},%msg);
-}
+	#set internal Ack Timer
+  }
 
 sub rawToMappedReading($$$$) {
   my($hash, $type, $childId, $value) = @_;
@@ -606,6 +636,40 @@ sub mappedReadingToRaw($$$) {
     }
   }
   die "no mapping for reading $reading";
+}
+
+sub refreshInternalMySTimer($$) {
+    my ($hash, $calltype) = @;
+    
+    Log3 $name, 4, "$name: refreshInternalMySTimer called ($calltype)";
+
+    if ($calltype eq "Alive") {
+        RemoveInternalTimer("timeoutAlive:$name");
+		#setze neuen Timer
+		$nextTrigger = gettimeofday() + $hash->{timeoutAlive});
+		InternalTimer($nextTrigger, "MYSENSORS::DEVICE::timeoutMySTimer", "timeoutAlive:$name", 0);
+		#update state, if not already "ALIVE"
+		my $do_trigger = $hash->{STATE} == "ALIVE" ? 0 : $hash->{STATE} == "NACK" ? 0 : 1; 
+		readingsSingleUpdate($hash,"state","ALIVE",$do_trigger) ;
+    } elsif ($calltype eq "Ack") {
+		RemoveInternalTimer("timeoutAck:$name");
+		#setze neuen Timer
+		$nextTrigger = gettimeofday() + $hash->{timeoutAck});
+		InternalTimer($nextTrigger, "MYSENSORS::DEVICE::timeoutMySTimer", "timeoutAck:$name", 0);
+    }
+}
+
+sub timeoutMySTimer($) {
+    my ($calltype, $name) = split(':', $_[0]);
+    my $hash = $defs{$name};
+   
+    Log3 $name, 4, "$name: timeoutMySTimer called ($calltype)";
+
+    if ($calltype eq "timeoutAlive") {
+        readingsSingleUpdate($hash,"state","DEAD",1) ;
+    } elsif ($calltype eq "timeoutAck") {
+        readingsSingleUpdate($hash,"state","NACK",1) ;
+    }
 }
 
 1;
@@ -687,4 +751,3 @@ sub mappedReadingToRaw($$$) {
 
 =end html
 =cut
-
