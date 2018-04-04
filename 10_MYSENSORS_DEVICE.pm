@@ -50,8 +50,8 @@ sub MYSENSORS_DEVICE_Initialize($) {
     "mapReadingType_.+ " .
     "mapReading_.+ " .
     "requestAck:1 " . 
-	"timeoutAck ".
-	"timeoutAlive ".
+    "timeoutAck ".
+    "timeoutAlive ".
     "IODev " .
     "showtime:0,1 " .
     $main::readingFnAttributes;
@@ -82,6 +82,8 @@ BEGIN {
     Log3
     SetExtensions
     ReadingsVal
+    InternalTimer
+    RemoveInternalTimer
   ))
 };
 
@@ -215,6 +217,7 @@ sub Define($$) {
 
 sub UnDefine($) {
   my ($hash) = @_;
+  my $name = $hash->{NAME};
   RemoveInternalTimer("timeoutAck:$name");
   RemoveInternalTimer("timeoutAlive:$name");
   return undef;
@@ -253,10 +256,10 @@ sub Set($@) {
           subType => $type,
           payload => $mappedValue,
         );
-		unless ($hash->{ack} or $hash->{IODev}->{ack}) {
-			readingsSingleUpdate($hash,$setcommand->{var},$setcommand->{val},1);
-			refreshInternalMySTimer($hash,"Ack") if ($hash->{timeoutAck});
-		}
+	unless ($hash->{ack} or $hash->{IODev}->{ack}) {
+	    readingsSingleUpdate($hash,$setcommand->{var},$setcommand->{val},1);
+	    refreshInternalMySTimer($hash,"Ack") if ($hash->{timeoutAck});
+	}
       };
       return "$command not defined: ".GP_Catch($@) if $@;
       last;
@@ -390,7 +393,7 @@ sub Attr($$$$) {
       }
       last;
     };
-	$attribute eq "timeoutAck" and do {
+    $attribute eq "timeoutAck" and do {
       if ($command eq "set") {
         $hash->{timeoutAck} = $value;
       } else {
@@ -398,10 +401,10 @@ sub Attr($$$$) {
       }
       last;
     };
-	$attribute eq "timeoutAlive" and do {
+    $attribute eq "timeoutAlive" and do {
       if ($command eq "set" and $value) {
         $hash->{timeoutAlive} = $value;
-		refreshInternalMySTimer($hash,"Alive");
+	refreshInternalMySTimer($hash,"Alive");
       } else {
         $hash->{timeoutAlive} = 0;
       }
@@ -474,17 +477,21 @@ sub onPresentationMessage($$) {
 
 sub onSetMessage($$) {
   my ($hash,$msg) = @_;
+  my $name = $hash->{NAME};
   if (defined $msg->{payload}) {
     eval {
       my ($reading,$value) = rawToMappedReading($hash,$msg->{subType},$msg->{childId},$msg->{payload});
       readingsSingleUpdate($hash, $reading, $value, 1);
-	  refreshInternalMySTimer($hash,"Alive") if ($hash->{timeoutAlive});#update internal Timer
-	  RemoveInternalTimer("timeoutAck:$name") if defined $hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}))
+      refreshInternalMySTimer($hash,"Alive") if ($hash->{timeoutAlive}); #update internal Timer
+      if (!defined $hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages} and $hash->{timeoutAck}) {
+        RemoveInternalTimer("timeoutAck:$name");
+	readingsSingleUpdate($hash,"state","ALIVE",1) if ($hash->{STATE} eq "NACK");
+      }
     };
     Log3 ($hash->{NAME}, 4, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_SET-message ".GP_Catch($@)) if $@;
   } else {
     Log3 ($hash->{NAME}, 5, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_SET-message without payload");
-  }
+  };
 }
 
 sub onRequestMessage($$) {
@@ -498,7 +505,7 @@ sub onRequestMessage($$) {
       subType => $msg->{subType},
       payload => ReadingsVal($hash->{NAME},$readingname,$val)
     );
-	#update internal Timer
+    #update internal Timer
   };
   Log3 ($hash->{NAME}, 4, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_REQ-message ".GP_Catch($@)) if $@;
 }
@@ -563,7 +570,7 @@ sub onInternalMessage($$) {
     };
     $type == I_CHILDREN and do {
       readingsSingleUpdate($hash, "state", "routingtable cleared", 1);
-	  Log3 ($name, 3, "MYSENSORS_DEVICE $name: routingtable cleared");
+      Log3 ($name, 3, "MYSENSORS_DEVICE $name: routingtable cleared");
       last;
     };
     $type == I_SKETCH_NAME and do {
@@ -604,7 +611,7 @@ sub sendClientMessage($%) {
   $msg{radioId} = $hash->{radioId};
   $msg{ack} = $hash->{ack} unless defined $msg{ack};
   sendMessage($hash->{IODev},%msg);
-	#set internal Ack Timer
+    #set internal Ack Timer
   }
 
 sub rawToMappedReading($$$$) {
@@ -639,29 +646,32 @@ sub mappedReadingToRaw($$$) {
 }
 
 sub refreshInternalMySTimer($$) {
-    my ($hash, $calltype) = @;
+  my ($hash,$calltype) = @_;
+  my $name = $hash->{NAME};
     
     Log3 $name, 4, "$name: refreshInternalMySTimer called ($calltype)";
 
     if ($calltype eq "Alive") {
         RemoveInternalTimer("timeoutAlive:$name");
-		#setze neuen Timer
-		$nextTrigger = gettimeofday() + $hash->{timeoutAlive});
-		InternalTimer($nextTrigger, "MYSENSORS::DEVICE::timeoutMySTimer", "timeoutAlive:$name", 0);
-		#update state, if not already "ALIVE"
-		my $do_trigger = $hash->{STATE} == "ALIVE" ? 0 : $hash->{STATE} == "NACK" ? 0 : 1; 
-		readingsSingleUpdate($hash,"state","ALIVE",$do_trigger) ;
+	#setze neuen Timer
+	my $nextTrigger = main::gettimeofday() + $hash->{timeoutAlive};
+	InternalTimer($nextTrigger, "MYSENSORS::DEVICE::timeoutMySTimer", "timeoutAlive:$name", 0);
+	#update state, if not already "ALIVE"
+	unless ($hash->{STATE} eq "NACK") {
+	    my $do_trigger = $hash->{STATE} ne "ALIVE" ? 1 : 0;
+	    readingsSingleUpdate($hash,"state","ALIVE",$do_trigger);
+	}
     } elsif ($calltype eq "Ack") {
-		RemoveInternalTimer("timeoutAck:$name");
-		#setze neuen Timer
-		$nextTrigger = gettimeofday() + $hash->{timeoutAck});
-		InternalTimer($nextTrigger, "MYSENSORS::DEVICE::timeoutMySTimer", "timeoutAck:$name", 0);
+	RemoveInternalTimer("timeoutAck:$name");
+	#setze neuen Timer
+	my $nextTrigger = main::gettimeofday() + $hash->{timeoutAck};
+	InternalTimer($nextTrigger, "MYSENSORS::DEVICE:timeoutMySTimer", "timeoutAck:$name", 0);
     }
 }
 
 sub timeoutMySTimer($) {
     my ($calltype, $name) = split(':', $_[0]);
-    my $hash = $defs{$name};
+    my $hash = $main::defs{$name};
    
     Log3 $name, 4, "$name: timeoutMySTimer called ($calltype)";
 
@@ -686,7 +696,7 @@ sub timeoutMySTimer($) {
 <ul>
   <p>represents a mysensors sensor attached to a mysensor-node</p>
   <p>requires a <a href="#MYSENSOR">MYSENSOR</a>-device as IODev</p>
-  <a name="MYSENSORS_DEVICEdefine"></a>
+  <a name="MYSENSORS_DEVICE define"></a>
   <p><b>Define</b></p>
   <ul>
     <p><code>define &lt;name&gt; MYSENSORS_DEVICE &lt;Sensor-type&gt; &lt;node-id&gt;</code><br/>
