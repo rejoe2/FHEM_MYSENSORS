@@ -479,7 +479,7 @@ sub onSetMessage($$) {
       my ($reading,$value) = rawToMappedReading($hash,$msg->{subType},$msg->{childId},$msg->{payload});
       readingsSingleUpdate($hash, $reading, $value, 1);
 	  refreshInternalMySTimer($hash,"Alive") if ($hash->{timeoutAlive});#update internal Timer
-	  RemoveInternalTimer("timeoutAck:$name") if $hash->{IODev}->{outstandingAck};
+	  RemoveInternalTimer("timeoutAck:$name") if defined $hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}))
     };
     Log3 ($hash->{NAME}, 4, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_SET-message ".GP_Catch($@)) if $@;
   } else {
