@@ -3,7 +3,6 @@
 # fhem bridge to MySensors (see http://mysensors.org)
 #
 # Copyright (C) 2014 Norbert Truchsess
-# Copyright (C) 2018 Hauswart@forum.fhem.de
 #
 #     This file is part of fhem.
 #
@@ -20,7 +19,7 @@
 #     You should have received a copy of the GNU General Public License
 #     along with fhem.  If not, see <http://www.gnu.org/licenses/>.
 #
-# $Id: 10_MYSENSORS_DEVICE.pm working version $
+# $Id: 10_MYSENSORS_DEVICE.pm 15790 2018-01-05 12:04:05Z Hauswart $
 #
 ##############################################
 
@@ -50,8 +49,6 @@ sub MYSENSORS_DEVICE_Initialize($) {
     "mapReadingType_.+ " .
     "mapReading_.+ " .
     "requestAck:1 " . 
-    "timeoutAck ".
-    "timeoutAlive ".
     "IODev " .
     "showtime:0,1 " .
     $main::readingFnAttributes;
@@ -82,8 +79,6 @@ BEGIN {
     Log3
     SetExtensions
     ReadingsVal
-    InternalTimer
-    RemoveInternalTimer
   ))
 };
 
@@ -212,14 +207,11 @@ sub Define($$) {
 
   $hash->{readingMappings} = {};
   AssignIoPort($hash);
-  #refreshInternalMySTimer($hash,"Alive") if ($hash->{timeoutAlive});
 };
 
 sub UnDefine($) {
   my ($hash) = @_;
-  my $name = $hash->{NAME};
-  RemoveInternalTimer("timeoutAck:$name");
-  RemoveInternalTimer("timeoutAlive:$name");
+
   return undef;
 }
 
@@ -256,12 +248,8 @@ sub Set($@) {
           subType => $type,
           payload => $mappedValue,
         );
-		unless ($hash->{ack} or $hash->{IODev}->{ack}) {
-			readingsSingleUpdate($hash,$setcommand->{var},$setcommand->{val},1);
-		} elsif ($hash->{timeoutAck}) {
-			refreshInternalMySTimer($hash,"Ack");
-		}
-	  };
+        readingsSingleUpdate($hash,$setcommand->{var},$setcommand->{val},1) unless ($hash->{ack} or $hash->{IODev}->{ack});
+      };
       return "$command not defined: ".GP_Catch($@) if $@;
       last;
     };
@@ -394,29 +382,11 @@ sub Attr($$$$) {
       }
       last;
     };
-    $attribute eq "timeoutAck" and do {
-      if ($command eq "set") {
-        $hash->{timeoutAck} = $value;
-      } else {
-        $hash->{timeoutAck} = 0;
-      }
-      last;
-    };
-    $attribute eq "timeoutAlive" and do {
-      if ($command eq "set" and $value) {
-        $hash->{timeoutAlive} = $value;
-	refreshInternalMySTimer($hash,"Alive");
-      } else {
-        $hash->{timeoutAlive} = 0;
-      }
-      last;
-    };
   }
 }
 
 sub onGatewayStarted($) {
   my ($hash) = @_;
-  refreshInternalMySTimer($hash,"Alive") if ($hash->{timeoutAlive});
 }
 
 sub onPresentationMessage($$) {
@@ -478,17 +448,15 @@ sub onPresentationMessage($$) {
 
 sub onSetMessage($$) {
   my ($hash,$msg) = @_;
-  my $name = $hash->{NAME};
   if (defined $msg->{payload}) {
     eval {
       my ($reading,$value) = rawToMappedReading($hash,$msg->{subType},$msg->{childId},$msg->{payload});
       readingsSingleUpdate($hash, $reading, $value, 1);
     };
     Log3 ($hash->{NAME}, 4, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_SET-message ".GP_Catch($@)) if $@;
-	refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive}; #update internal Timer
   } else {
     Log3 ($hash->{NAME}, 5, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_SET-message without payload");
-  };
+  }
 }
 
 sub onRequestMessage($$) {
@@ -502,7 +470,6 @@ sub onRequestMessage($$) {
       subType => $msg->{subType},
       payload => ReadingsVal($hash->{NAME},$readingname,$val)
     );
-    #update internal Timer
   };
   Log3 ($hash->{NAME}, 4, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_REQ-message ".GP_Catch($@)) if $@;
 }
@@ -567,7 +534,7 @@ sub onInternalMessage($$) {
     };
     $type == I_CHILDREN and do {
       readingsSingleUpdate($hash, "state", "routingtable cleared", 1);
-      Log3 ($name, 3, "MYSENSORS_DEVICE $name: routingtable cleared");
+	  Log3 ($name, 3, "MYSENSORS_DEVICE $name: routingtable cleared");
       last;
     };
     $type == I_SKETCH_NAME and do {
@@ -608,8 +575,7 @@ sub sendClientMessage($%) {
   $msg{radioId} = $hash->{radioId};
   $msg{ack} = $hash->{ack} unless defined $msg{ack};
   sendMessage($hash->{IODev},%msg);
-    #set internal Ack Timer
-  }
+}
 
 sub rawToMappedReading($$$$) {
   my($hash, $type, $childId, $value) = @_;
@@ -642,47 +608,6 @@ sub mappedReadingToRaw($$$) {
   die "no mapping for reading $reading";
 }
 
-sub refreshInternalMySTimer($$) {
-  my ($hash,$calltype) = @_;
-  my $name = $hash->{NAME};
-    
-  Log3 $name, 4, "$name: refreshInternalMySTimer called ($calltype)";
-
-  if ($calltype eq "Alive") {
-    RemoveInternalTimer("timeoutAlive:$name");
-	#setze neuen Timer
-	my $nextTrigger = main::gettimeofday() + $hash->{timeoutAlive};
-	InternalTimer($nextTrigger, "MYSENSORS::DEVICE::timeoutMySTimer", "timeoutAlive:$name", 0);
-	#update state, if not already "ALIVE"
-	unless ($hash->{STATE} eq "NACK") {
-		my $do_trigger = $hash->{STATE} ne "ALIVE" ? 1 : 0;
-		readingsSingleUpdate($hash,"state","ALIVE",$do_trigger);
-	}
-  } elsif ($calltype eq "Ack") {
-	RemoveInternalTimer("timeoutAck:$name");
-	#setze neuen Timer
-	my $nextTrigger = main::gettimeofday() + $hash->{timeoutAck};
-	InternalTimer($nextTrigger, "MYSENSORS::DEVICE:timeoutMySTimer", "timeoutAck:$name", 0);
-  }
-}
-
-sub timeoutMySTimer($) {
-    my ($calltype, $name) = split(':', $_[0]);
-    my $hash = $main::defs{$name};
-   
-    Log3 $name, 4, "$name: timeoutMySTimer called ($calltype)";
-
-    if ($calltype eq "timeoutAlive") {
-        readingsSingleUpdate($hash,"state","DEAD",1) ;
-    } elsif ($calltype eq "timeoutAck") {
-		if (!defined $hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}) {
-			readingsSingleUpdate($hash,"state","ALIVE",1) if ($hash->{STATE} eq "NACK");
-		} else {
-			readingsSingleUpdate($hash,"state","NACK",1) ;
-		}
-	}
-}
-
 1;
 
 =pod
@@ -697,7 +622,7 @@ sub timeoutMySTimer($) {
 <ul>
   <p>represents a mysensors sensor attached to a mysensor-node</p>
   <p>requires a <a href="#MYSENSOR">MYSENSOR</a>-device as IODev</p>
-  <a name="MYSENSORS_DEVICE define"></a>
+  <a name="MYSENSORS_DEVICEdefine"></a>
   <p><b>Define</b></p>
   <ul>
     <p><code>define &lt;name&gt; MYSENSORS_DEVICE &lt;Sensor-type&gt; &lt;node-id&gt;</code><br/>
@@ -757,16 +682,9 @@ sub timeoutMySTimer($) {
          E.g.: <code>attr xxx mapReadingType_LIGHT switch 0:on 1:off</code>
          to be used for mysensor Variabletypes that have no predefined defaults (yet)</p>
     </li>
-    <li>
-      <p><code>attr &lt;name&gt; timeoutAck &lt;time in seconds&gt;*</code><br/>
-         configures timeout to set device state to NACK in case not all requested acks are received</p>
-    </li>
-    <li>
-      <p><code>attr &lt;name&gt; timeoutAlive &lt;time in seconds&gt;*</code><br/>
-         configures timeout to set device state to ALIVE or DEAD. If messages from node are received within timout spec, state will be ALIVE, otherwise DEAD. State will be kept as NACK in case timeoutAck is also set and timout for acks has been detected</p>
-    </li>
   </ul>
 </ul>
 
 =end html
 =cut
+
