@@ -256,11 +256,12 @@ sub Set($@) {
           subType => $type,
           payload => $mappedValue,
         );
-	unless ($hash->{ack} or $hash->{IODev}->{ack}) {
-	    readingsSingleUpdate($hash,$setcommand->{var},$setcommand->{val},1);
-	    refreshInternalMySTimer($hash,"Ack") if ($hash->{timeoutAck});
-	}
-      };
+		unless ($hash->{ack} or $hash->{IODev}->{ack}) {
+			readingsSingleUpdate($hash,$setcommand->{var},$setcommand->{val},1);
+		} elsif ($hash->{timeoutAck}) {
+			refreshInternalMySTimer($hash,"Ack");
+		}
+	  };
       return "$command not defined: ".GP_Catch($@) if $@;
       last;
     };
@@ -482,13 +483,9 @@ sub onSetMessage($$) {
     eval {
       my ($reading,$value) = rawToMappedReading($hash,$msg->{subType},$msg->{childId},$msg->{payload});
       readingsSingleUpdate($hash, $reading, $value, 1);
-      refreshInternalMySTimer($hash,"Alive") if ($hash->{timeoutAlive}); #update internal Timer
-      if (!defined $hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages} and $hash->{timeoutAck}) {
-        RemoveInternalTimer("timeoutAck:$name");
-	readingsSingleUpdate($hash,"state","ALIVE",1) if ($hash->{STATE} eq "NACK");
-      }
     };
     Log3 ($hash->{NAME}, 4, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_SET-message ".GP_Catch($@)) if $@;
+	refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive}; #update internal Timer
   } else {
     Log3 ($hash->{NAME}, 5, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_SET-message without payload");
   };
@@ -649,24 +646,24 @@ sub refreshInternalMySTimer($$) {
   my ($hash,$calltype) = @_;
   my $name = $hash->{NAME};
     
-    Log3 $name, 4, "$name: refreshInternalMySTimer called ($calltype)";
+  Log3 $name, 4, "$name: refreshInternalMySTimer called ($calltype)";
 
-    if ($calltype eq "Alive") {
-        RemoveInternalTimer("timeoutAlive:$name");
+  if ($calltype eq "Alive") {
+    RemoveInternalTimer("timeoutAlive:$name");
 	#setze neuen Timer
 	my $nextTrigger = main::gettimeofday() + $hash->{timeoutAlive};
 	InternalTimer($nextTrigger, "MYSENSORS::DEVICE::timeoutMySTimer", "timeoutAlive:$name", 0);
 	#update state, if not already "ALIVE"
 	unless ($hash->{STATE} eq "NACK") {
-	    my $do_trigger = $hash->{STATE} ne "ALIVE" ? 1 : 0;
-	    readingsSingleUpdate($hash,"state","ALIVE",$do_trigger);
+		my $do_trigger = $hash->{STATE} ne "ALIVE" ? 1 : 0;
+		readingsSingleUpdate($hash,"state","ALIVE",$do_trigger);
 	}
-    } elsif ($calltype eq "Ack") {
+  } elsif ($calltype eq "Ack") {
 	RemoveInternalTimer("timeoutAck:$name");
 	#setze neuen Timer
 	my $nextTrigger = main::gettimeofday() + $hash->{timeoutAck};
 	InternalTimer($nextTrigger, "MYSENSORS::DEVICE:timeoutMySTimer", "timeoutAck:$name", 0);
-    }
+  }
 }
 
 sub timeoutMySTimer($) {
@@ -678,8 +675,12 @@ sub timeoutMySTimer($) {
     if ($calltype eq "timeoutAlive") {
         readingsSingleUpdate($hash,"state","DEAD",1) ;
     } elsif ($calltype eq "timeoutAck") {
-        readingsSingleUpdate($hash,"state","NACK",1) ;
-    }
+		if (!defined $hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}) {
+			readingsSingleUpdate($hash,"state","ALIVE",1) if ($hash->{STATE} eq "NACK");
+		} else {
+			readingsSingleUpdate($hash,"state","NACK",1) ;
+		}
+	}
 }
 
 1;
@@ -755,6 +756,14 @@ sub timeoutMySTimer($) {
          configures reading type names that should be used instead of technical names<br/>
          E.g.: <code>attr xxx mapReadingType_LIGHT switch 0:on 1:off</code>
          to be used for mysensor Variabletypes that have no predefined defaults (yet)</p>
+    </li>
+    <li>
+      <p><code>attr &lt;name&gt; timeoutAck &lt;time in seconds&gt;*</code><br/>
+         configures timeout to set device state to NACK in case not all requested acks are received</p>
+    </li>
+    <li>
+      <p><code>attr &lt;name&gt; timeoutAlive &lt;time in seconds&gt;*</code><br/>
+         configures timeout to set device state to ALIVE or DEAD. If messages from node are received within timout spec, state will be ALIVE, otherwise DEAD. State will be kept as NACK in case timeoutAck is also set and timout for acks has been detected</p>
     </li>
   </ul>
 </ul>
