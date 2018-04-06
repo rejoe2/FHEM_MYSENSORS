@@ -664,14 +664,17 @@ sub timeoutMySTimer($) {
     if ($calltype eq "timeoutAlive") {
         readingsSingleUpdate($hash,"state","DEAD",1) unless ($hash->{STATE} eq "NACK");
     } elsif ($calltype eq "timeoutAck") {
-		if (!defined $hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}) {
-			Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), no outstanding Acks";
+    	unless ($hash->{IODev}->{outstandingAck}) {
+		Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), no outstanding Acks at all";
     		readingsSingleUpdate($hash,"state","ALIVE",1) if ($hash->{STATE} eq "NACK");
-		} else {
-			Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), outstanding: $hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}";
+	} elsif (!$hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}) {
+		Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), no outstanding Acks for Node";
+    		readingsSingleUpdate($hash,"state","ALIVE",1) if ($hash->{STATE} eq "NACK");
+	} else {
+		Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), outstanding: $hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}";
     		readingsSingleUpdate($hash,"state","NACK",1) ;
-		}
 	}
+    }
 }
 
 1;
