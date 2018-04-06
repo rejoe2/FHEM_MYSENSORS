@@ -212,7 +212,6 @@ sub Define($$) {
 
   $hash->{readingMappings} = {};
   AssignIoPort($hash);
-  #refreshInternalMySTimer($hash,"Alive") if ($hash->{timeoutAlive});
 };
 
 sub UnDefine($) {
@@ -256,12 +255,8 @@ sub Set($@) {
           subType => $type,
           payload => $mappedValue,
         );
-		unless ($hash->{ack} or $hash->{IODev}->{ack}) {
-			readingsSingleUpdate($hash,$setcommand->{var},$setcommand->{val},1);
-		} elsif ($hash->{timeoutAck}) {
-			refreshInternalMySTimer($hash,"Ack");
-		}
-	  };
+		readingsSingleUpdate($hash,$setcommand->{var},$setcommand->{val},1) unless ($hash->{ack} or $hash->{IODev}->{ack});
+		};
       return "$command not defined: ".GP_Catch($@) if $@;
       last;
     };
@@ -485,7 +480,7 @@ sub onSetMessage($$) {
       readingsSingleUpdate($hash, $reading, $value, 1);
     };
     Log3 ($hash->{NAME}, 4, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_SET-message ".GP_Catch($@)) if $@;
-	refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive}; #update internal Timer
+	refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
   } else {
     Log3 ($hash->{NAME}, 5, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_SET-message without payload");
   };
@@ -502,8 +497,8 @@ sub onRequestMessage($$) {
       subType => $msg->{subType},
       payload => ReadingsVal($hash->{NAME},$readingname,$val)
     );
-    #update internal Timer
   };
+  refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
   Log3 ($hash->{NAME}, 4, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_REQ-message ".GP_Catch($@)) if $@;
 }
 
@@ -608,8 +603,8 @@ sub sendClientMessage($%) {
   $msg{radioId} = $hash->{radioId};
   $msg{ack} = $hash->{ack} unless defined $msg{ack};
   sendMessage($hash->{IODev},%msg);
-    #set internal Ack Timer
-  }
+  refreshInternalMySTimer($hash,"Ack") if (($hash->{ack} or $hash->{IODev}->{ack}) and $hash->{timeoutAck}) ; 
+}
 
 sub rawToMappedReading($$$$) {
   my($hash, $type, $childId, $value) = @_;
@@ -645,40 +640,36 @@ sub mappedReadingToRaw($$$) {
 sub refreshInternalMySTimer($$) {
   my ($hash,$calltype) = @_;
   my $name = $hash->{NAME};
-    
-  Log3 $name, 4, "$name: refreshInternalMySTimer called ($calltype)";
-
+  Log3 $name, 5, "$name: refreshInternalMySTimer called ($calltype)";
   if ($calltype eq "Alive") {
     RemoveInternalTimer("timeoutAlive:$name");
-	#setze neuen Timer
 	my $nextTrigger = main::gettimeofday() + $hash->{timeoutAlive};
 	InternalTimer($nextTrigger, "MYSENSORS::DEVICE::timeoutMySTimer", "timeoutAlive:$name", 0);
-	#update state, if not already "ALIVE"
 	unless ($hash->{STATE} eq "NACK") {
 		my $do_trigger = $hash->{STATE} ne "ALIVE" ? 1 : 0;
 		readingsSingleUpdate($hash,"state","ALIVE",$do_trigger);
 	}
   } elsif ($calltype eq "Ack") {
 	RemoveInternalTimer("timeoutAck:$name");
-	#setze neuen Timer
 	my $nextTrigger = main::gettimeofday() + $hash->{timeoutAck};
 	InternalTimer($nextTrigger, "MYSENSORS::DEVICE:timeoutMySTimer", "timeoutAck:$name", 0);
+	Log3 $name, 4, "$name: Ack timeout timer set at $nextTrigger";
   }
 }
 
 sub timeoutMySTimer($) {
     my ($calltype, $name) = split(':', $_[0]);
     my $hash = $main::defs{$name};
-   
-    Log3 $name, 4, "$name: timeoutMySTimer called ($calltype)";
-
+    Log3 $name, 5, "$name: timeoutMySTimer called ($calltype)";
     if ($calltype eq "timeoutAlive") {
-        readingsSingleUpdate($hash,"state","DEAD",1) ;
+        readingsSingleUpdate($hash,"state","DEAD",1) unless ($hash->{STATE} eq "NACK");
     } elsif ($calltype eq "timeoutAck") {
 		if (!defined $hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}) {
-			readingsSingleUpdate($hash,"state","ALIVE",1) if ($hash->{STATE} eq "NACK");
+			Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), no outstanding Acks";
+    		readingsSingleUpdate($hash,"state","ALIVE",1) if ($hash->{STATE} eq "NACK");
 		} else {
-			readingsSingleUpdate($hash,"state","NACK",1) ;
+			Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), outstanding: $hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}";
+    		readingsSingleUpdate($hash,"state","NACK",1) ;
 		}
 	}
 }
