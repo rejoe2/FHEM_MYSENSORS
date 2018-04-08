@@ -255,8 +255,8 @@ sub Set($@) {
           subType => $type,
           payload => $mappedValue,
         );
-		readingsSingleUpdate($hash,$setcommand->{var},$setcommand->{val},1) unless ($hash->{ack} or $hash->{IODev}->{ack});
-		};
+	readingsSingleUpdate($hash,$setcommand->{var},$setcommand->{val},1) unless ($hash->{ack} or $hash->{IODev}->{ack});
+	};
       return "$command not defined: ".GP_Catch($@) if $@;
       last;
     };
@@ -400,7 +400,7 @@ sub Attr($$$$) {
     $attribute eq "timeoutAlive" and do {
       if ($command eq "set" and $value) {
         $hash->{timeoutAlive} = $value;
-	refreshInternalMySTimer($hash,"Alive");
+    refreshInternalMySTimer($hash,"Alive");
       } else {
         $hash->{timeoutAlive} = 0;
       }
@@ -480,7 +480,7 @@ sub onSetMessage($$) {
       readingsSingleUpdate($hash, $reading, $value, 1);
     };
     Log3 ($hash->{NAME}, 4, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_SET-message ".GP_Catch($@)) if $@;
-	refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
+    refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
   } else {
     Log3 ($hash->{NAME}, 5, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_SET-message without payload");
   };
@@ -643,17 +643,17 @@ sub refreshInternalMySTimer($$) {
   Log3 $name, 5, "$name: refreshInternalMySTimer called ($calltype)";
   if ($calltype eq "Alive") {
     RemoveInternalTimer("timeoutAlive:$name");
-	my $nextTrigger = main::gettimeofday() + $hash->{timeoutAlive};
-	InternalTimer($nextTrigger, "MYSENSORS::DEVICE::timeoutMySTimer", "timeoutAlive:$name", 0);
-	unless ($hash->{STATE} eq "NACK") {
-		my $do_trigger = $hash->{STATE} ne "ALIVE" ? 1 : 0;
-		readingsSingleUpdate($hash,"state","ALIVE",$do_trigger);
-	}
+    my $nextTrigger = main::gettimeofday() + $hash->{timeoutAlive};
+    InternalTimer($nextTrigger, "MYSENSORS::DEVICE::timeoutMySTimer", "timeoutAlive:$name", 0);
+    unless ($hash->{STATE} eq "NACK") {
+	my $do_trigger = $hash->{STATE} ne "ALIVE" ? 1 : 0;
+	readingsSingleUpdate($hash,"state","ALIVE",$do_trigger);
+    }
   } elsif ($calltype eq "Ack") {
-	RemoveInternalTimer("timeoutAck:$name");
-	my $nextTrigger = main::gettimeofday() + $hash->{timeoutAck};
-	InternalTimer($nextTrigger, "MYSENSORS::DEVICE:timeoutMySTimer", "timeoutAck:$name", 0);
-	Log3 $name, 4, "$name: Ack timeout timer set at $nextTrigger";
+    RemoveInternalTimer("timeoutAck:$name");
+    my $nextTrigger = main::gettimeofday() + $hash->{timeoutAck};
+    InternalTimer($nextTrigger, "MYSENSORS::DEVICE::timeoutMySTimer", "timeoutAck:$name", 0);
+    Log3 $name, 4, "$name: Ack timeout timer set at $nextTrigger";
   }
 }
 
@@ -664,15 +664,16 @@ sub timeoutMySTimer($) {
     if ($calltype eq "timeoutAlive") {
         readingsSingleUpdate($hash,"state","DEAD",1) unless ($hash->{STATE} eq "NACK");
     } elsif ($calltype eq "timeoutAck") {
-    	unless ($hash->{IODev}->{outstandingAck}) {
-		Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), no outstanding Acks at all";
-    		readingsSingleUpdate($hash,"state","ALIVE",1) if ($hash->{STATE} eq "NACK");
-	} elsif (!$hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}) {
-		Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), no outstanding Acks for Node";
-    		readingsSingleUpdate($hash,"state","ALIVE",1) if ($hash->{STATE} eq "NACK");
+	#readingsSingleUpdate($hash,"state","timeoutAck passed",1);# if ($hash->{STATE} eq "NACK");
+	if ($hash->{IODev}->{outstandingAck} == 0) {
+	    Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), no outstanding Acks at all";
+	    readingsSingleUpdate($hash,"state","ALIVE",1) if ($hash->{STATE} eq "NACK");
+	} elsif (@{$hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}}) {
+	    Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), outstanding: $hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}";
+	    readingsSingleUpdate($hash,"state","NACK",1) ;
 	} else {
-		Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), outstanding: $hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}";
-    		readingsSingleUpdate($hash,"state","NACK",1) ;
+	    Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), no outstanding Acks for Node";
+	    readingsSingleUpdate($hash,"state","ALIVE",1) if ($hash->{STATE} eq "NACK");
 	}
     }
 }
