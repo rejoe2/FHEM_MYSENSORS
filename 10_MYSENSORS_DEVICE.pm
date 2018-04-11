@@ -645,9 +645,9 @@ sub refreshInternalMySTimer($$) {
     RemoveInternalTimer("timeoutAlive:$name");
     my $nextTrigger = main::gettimeofday() + $hash->{timeoutAlive};
     InternalTimer($nextTrigger, "MYSENSORS::DEVICE::timeoutMySTimer", "timeoutAlive:$name", 0);
-    unless ($hash->{STATE} eq "NACK") {
-	my $do_trigger = $hash->{STATE} ne "ALIVE" ? 1 : 0;
-	readingsSingleUpdate($hash,"state","ALIVE",$do_trigger);
+    if ($hash->{STATE} ne "NACK" or $hash->{STATE} eq "NACK" and @{$hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}} == 0) {
+		my $do_trigger = $hash->{STATE} ne "alive" ? 1 : 0;
+		readingsSingleUpdate($hash,"state","alive",$do_trigger);
     }
   } elsif ($calltype eq "Ack") {
     RemoveInternalTimer("timeoutAck:$name");
@@ -662,18 +662,18 @@ sub timeoutMySTimer($) {
     my $hash = $main::defs{$name};
     Log3 $name, 5, "$name: timeoutMySTimer called ($calltype)";
     if ($calltype eq "timeoutAlive") {
-        readingsSingleUpdate($hash,"state","DEAD",1) unless ($hash->{STATE} eq "NACK");
+        readingsSingleUpdate($hash,"state","dead",1) unless ($hash->{STATE} eq "NACK");
     } elsif ($calltype eq "timeoutAck") {
 	#readingsSingleUpdate($hash,"state","timeoutAck passed",1);# if ($hash->{STATE} eq "NACK");
 	if ($hash->{IODev}->{outstandingAck} == 0) {
 	    Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), no outstanding Acks at all";
-	    readingsSingleUpdate($hash,"state","ALIVE",1) if ($hash->{STATE} eq "NACK");
+	    readingsSingleUpdate($hash,"state","alive",1) if ($hash->{STATE} eq "NACK");
 	} elsif (@{$hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}}) {
 	    Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), outstanding: $hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}";
 	    readingsSingleUpdate($hash,"state","NACK",1) ;
 	} else {
 	    Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), no outstanding Acks for Node";
-	    readingsSingleUpdate($hash,"state","ALIVE",1) if ($hash->{STATE} eq "NACK");
+	    readingsSingleUpdate($hash,"state","alive",1) if ($hash->{STATE} eq "NACK");
 	}
     }
 }
@@ -758,7 +758,7 @@ sub timeoutMySTimer($) {
     </li>
     <li>
       <p><code>attr &lt;name&gt; timeoutAlive &lt;time in seconds&gt;*</code><br/>
-         configures timeout to set device state to ALIVE or DEAD. If messages from node are received within timout spec, state will be ALIVE, otherwise DEAD. State will be kept as NACK in case timeoutAck is also set and timout for acks has been detected</p>
+         configures timeout to set device state to alive or dead. If messages from node are received within timout spec, state will be alive, otherwise dead. If state is NACK (in case timeoutAck is also set), state will only be changed to alive, if there are no outstanding messages to be sent.</p>
     </li>
   </ul>
 </ul>
