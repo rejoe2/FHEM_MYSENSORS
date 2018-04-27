@@ -20,7 +20,7 @@
 #     You should have received a copy of the GNU General Public License
 #     along with fhem.  If not, see <http://www.gnu.org/licenses/>.
 #
-# $Id: 10_MYSENSORS_DEVICE.pm 16597 2018-04-13 08:46:18Z Hauswart $id$
+# $Id: 10_MYSENSORS_DEVICE.pm working version 2018-04-27 $id$
 #
 ##############################################
 
@@ -28,9 +28,10 @@ use strict;
 use warnings;
 
 my %gets = (
-  "version"   => "",
-  "heartbeat" => "", #request node to send hearbeat, MySensorsCore.cpp L 429
+  "version"   	 => "",
+  "heartbeat" 	 => "", #request node to send hearbeat, MySensorsCore.cpp L 429
   "presentation" => "", #request node to redo presentation, MySensorsCore.cpp L 426
+  "RSSI" 	 => "", #request RSSI values (available only for recent versions, not for all transceiver types
 );
 
 sub MYSENSORS_DEVICE_Initialize($) {
@@ -41,7 +42,7 @@ sub MYSENSORS_DEVICE_Initialize($) {
   $hash->{DefFn}    = "MYSENSORS::DEVICE::Define";
   $hash->{UndefFn}  = "MYSENSORS::DEVICE::UnDefine";
   $hash->{SetFn}    = "MYSENSORS::DEVICE::Set";
-  $hash->{GetFn}   = "MYSENSORS::DEVICE::Get";
+  $hash->{GetFn}    = "MYSENSORS::DEVICE::Get";
   $hash->{AttrFn}   = "MYSENSORS::DEVICE::Attr";
   
   $hash->{AttrList} =
@@ -291,6 +292,10 @@ sub Get($@) {
     };
 	$command eq "presentation" and do {
       sendClientMessage($hash, $hash->{radioId}, cmd => C_INTERNAL, subType => I_PRESENTATION);
+      last;
+    };
+	$command eq "RSSI" and do {
+      sendClientMessage($hash, $hash->{radioId}, cmd => C_INTERNAL, subType => I_SIGNAL_REPORT_REQUEST);
       last;
     };
   }
@@ -661,6 +666,32 @@ sub onInternalMessage($$) {
       $hash->{$typeStr} = $msg->{payload};
       last;
     }; 
+    };$type == I_SIGNAL_REPORT_REVERSE and do {
+      $hash->{$typeStr} = $msg->{payload};
+      readingsSingleUpdate($hash, "RSSI_back", $msg->{payload}, 1);
+    last;
+    }; 
+    };$type == I_SIGNAL_REPORT_RESPONSE and do {
+      $hash->{$typeStr} = $msg->{payload};
+      readingsSingleUpdate($hash, "RSSI_to", $msg->{payload}, 1);
+    last;
+    }; 
+	};$type == I_PRE_SLEEP_NOTIFICATION and do {
+      $hash->{$typeStr} = $msg->{payload};
+	  readingsSingleUpdate($hash, "nowSleeping", "1", 0);
+      last;
+    }; 
+	};$type == I_POST_SLEEP_NOTIFICATION and do {
+      $hash->{$typeStr} = $msg->{payload};
+	  readingsSingleUpdate($hash, "nowSleeping", "0", 0);
+	  #here we can send out retained and outstanding messages
+	  $hash{nexttry} = -1;
+	  MYSENSORS::Timer($hash);	 
+	  foreach my $retainedMsg (@{$hash->{retainedMessagesForRadioId}}) {
+	    sendClientMessage($hash,%$retainedMsg);
+	  };
+	  last;
+    }; 
   }
 }
 
@@ -668,8 +699,26 @@ sub sendClientMessage($%) {
 	my ($hash,%msg) = @_;
 	$msg{radioId} = $hash->{radioId};
 	$msg{ack} = $hash->{ack} unless defined $msg{ack};
-	sendMessage($hash->{IODev},%msg);
-	refreshInternalMySTimer($hash,"Ack") if (($hash->{ack} or $hash->{IODev}->{ack}) and $hash->{timeoutAck}) ; 
+	unless $hash->{nowSleeping} {
+	  sendMessage($hash->{IODev},%msg);
+	  refreshInternalMySTimer($hash,"Ack") if (($hash->{ack} or $hash->{IODev}->{ack}) and $hash->{timeoutAck}) ; 
+	} else {
+	  #write to queue if node is asleep
+	  my $retainedMessagesForRadioId = $hash->{retainedMessagesForRadioId}->{$msg{radioId}};
+      unless (defined $retainedMessagesForRadioId) {
+	      $retainedMessagesForRadioId = {
+	        messages => [],
+	      };
+	      $hash->{retainedMessagesForRadioId}->{$msg{radioId}} = $retainedMessagesForRadioId;
+	  }
+	  my $messages = $retainedMessagesForRadioId->{messages};
+	  @$messages = grep {
+	      $_->{childId} != $msg{childId}
+		  or $_->{cmd}     != $msg{cmd}
+	      or $_->{subType} != $msg{subType}
+	  } @$messages;
+	  push @$messages,\%msg;
+	}
 }
 
 sub rawToMappedReading($$$$) {
