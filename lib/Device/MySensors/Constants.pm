@@ -126,6 +126,11 @@ use constant {
   I_REGISTRATION_REQUEST => 26, # 	Register request to GW
   I_REGISTRATION_RESPONSE => 27, # 	Register response from GW
   I_DEBUG	 	 => 28, 
+  I_SIGNAL_REPORT_REQUEST => 29,
+  I_SIGNAL_REPORT_REVERSE => 30,
+  I_SIGNAL_REPORT_RESPONSE => 31,
+  I_PRE_SLEEP_NOTIFICATION => 32,
+  I_POST_SLEEP_NOTIFICATION => 33,
 };
 
 use constant internalMessageTypes => qw{ I_BATTERY_LEVEL I_TIME I_VERSION I_ID_REQUEST I_ID_RESPONSE
