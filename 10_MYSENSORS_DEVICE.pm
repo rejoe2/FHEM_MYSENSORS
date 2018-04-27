@@ -20,7 +20,7 @@
 #     You should have received a copy of the GNU General Public License
 #     along with fhem.  If not, see <http://www.gnu.org/licenses/>.
 #
-# $Id: 10_MYSENSORS_DEVICE.pm working version $
+# $Id: 10_MYSENSORS_DEVICE.pm 16597 2018-04-13 08:46:18Z Hauswart $id$
 #
 ##############################################
 
@@ -29,6 +29,8 @@ use warnings;
 
 my %gets = (
   "version"   => "",
+  "heartbeat" => "", #request node to send hearbeat, MySensorsCore.cpp L 429
+  "presentation" => "", #request node to redo presentation, MySensorsCore.cpp L 426
 );
 
 sub MYSENSORS_DEVICE_Initialize($) {
@@ -39,6 +41,7 @@ sub MYSENSORS_DEVICE_Initialize($) {
   $hash->{DefFn}    = "MYSENSORS::DEVICE::Define";
   $hash->{UndefFn}  = "MYSENSORS::DEVICE::UnDefine";
   $hash->{SetFn}    = "MYSENSORS::DEVICE::Set";
+  $hash->{GetFn}   = "MYSENSORS::DEVICE::Get";
   $hash->{AttrFn}   = "MYSENSORS::DEVICE::Attr";
   
   $hash->{AttrList} =
@@ -50,8 +53,8 @@ sub MYSENSORS_DEVICE_Initialize($) {
     "mapReadingType_.+ " .
     "mapReading_.+ " .
     "requestAck:1 " . 
-    "timeoutAck ".
-    "timeoutAlive ".
+    "timeoutAck " .
+    "timeoutAlive " .
     "IODev " .
     "showtime:0,1 " .
     $main::readingFnAttributes;
@@ -270,6 +273,30 @@ sub Set($@) {
   }
 }
 
+sub Get($@) {
+  my ($hash,$name,$command,@values) = @_;
+  return "Need at least one parameters" unless defined $command;
+  if(!defined($hash->{gets}->{$command})) {
+    my $list = join(" ", map {$hash->{gets}->{$_} ne "" ? "$_:$hash->{gets}->{$_}" : $_} sort keys %{$hash->{gets}});
+    return grep (keys %{$hash->{gets}} == 1 ? "Unknown argument $command, choose one of $list";
+  }
+  COMMAND_HANDLER: {
+    $command eq "version" and do {
+      sendClientMessage($hash, $hash->{radioId}, cmd => C_INTERNAL, subType => I_VERSION);
+      last;
+    };
+    $command eq "heartbeat" and do {
+      sendClientMessage($hash, $hash->{radioId}, cmd => C_INTERNAL, subType => I_HEARTBEAT_REQUEST);
+      last;
+    };
+	$command eq "presentation" and do {
+      sendClientMessage($hash, $hash->{radioId}, cmd => C_INTERNAL, subType => I_PRESENTATION);
+      last;
+    };
+  }
+}
+
+
 sub Attr($$$$) {
   my ($command,$name,$attribute,$value) = @_;
 
@@ -389,29 +416,29 @@ sub Attr($$$$) {
       }
       last;
     };
-    $attribute eq "timeoutAck" and do {
-      if ($command eq "set") {
-        $hash->{timeoutAck} = $value;
-      } else {
-        $hash->{timeoutAck} = 0;
-      }
-      last;
-    };
-    $attribute eq "timeoutAlive" and do {
-      if ($command eq "set" and $value) {
-        $hash->{timeoutAlive} = $value;
-    refreshInternalMySTimer($hash,"Alive");
-      } else {
-        $hash->{timeoutAlive} = 0;
-      }
-      last;
-    };
+	$attribute eq "timeoutAck" and do {
+		if ($command eq "set") {
+			$hash->{timeoutAck} = $value;
+		} else {
+			$hash->{timeoutAck} = 0;
+		}
+		last;
+	};
+	$attribute eq "timeoutAlive" and do {
+		if ($command eq "set" and $value) {
+			$hash->{timeoutAlive} = $value;
+			refreshInternalMySTimer($hash,"Alive");
+		} else {
+			$hash->{timeoutAlive} = 0;
+		}
+		last;
+	};
   }
 }
 
 sub onGatewayStarted($) {
-  my ($hash) = @_;
-  refreshInternalMySTimer($hash,"Alive") if ($hash->{timeoutAlive});
+	my ($hash) = @_;
+	refreshInternalMySTimer($hash,"Alive") if ($hash->{timeoutAlive});
 }
 
 sub onPresentationMessage($$) {
@@ -472,34 +499,33 @@ sub onPresentationMessage($$) {
 }
 
 sub onSetMessage($$) {
-  my ($hash,$msg) = @_;
-  my $name = $hash->{NAME};
-  if (defined $msg->{payload}) {
-    eval {
-      my ($reading,$value) = rawToMappedReading($hash,$msg->{subType},$msg->{childId},$msg->{payload});
-      readingsSingleUpdate($hash, $reading, $value, 1);
-    };
-    Log3 ($hash->{NAME}, 4, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_SET-message ".GP_Catch($@)) if $@;
-    refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
-  } else {
-    Log3 ($hash->{NAME}, 5, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_SET-message without payload");
-  };
+	my ($hash,$msg) = @_;
+	my $name = $hash->{NAME};
+	if (defined $msg->{payload}) {
+		eval {
+			my ($reading,$value) = rawToMappedReading($hash,$msg->{subType},$msg->{childId},$msg->{payload});
+			readingsSingleUpdate($hash, $reading, $value, 1);
+		};
+		Log3 ($hash->{NAME}, 4, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_SET-message ".GP_Catch($@)) if $@;
+		refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
+	} else {
+		Log3 ($hash->{NAME}, 5, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_SET-message without payload");
+	};
 }
 
 sub onRequestMessage($$) {
-  my ($hash,$msg) = @_;
-
-  eval {
-    my ($readingname,$val) = rawToMappedReading($hash, $msg->{subType}, $msg->{childId}, $msg->{payload});
-    sendClientMessage($hash,
-      childId => $msg->{childId},
-      cmd => C_SET,
-      subType => $msg->{subType},
-      payload => ReadingsVal($hash->{NAME},$readingname,$val)
-    );
-  };
-  refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
-  Log3 ($hash->{NAME}, 4, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_REQ-message ".GP_Catch($@)) if $@;
+	my ($hash,$msg) = @_;
+	eval {
+		my ($readingname,$val) = rawToMappedReading($hash, $msg->{subType}, $msg->{childId}, $msg->{payload});
+		sendClientMessage($hash,
+			childId => $msg->{childId},
+			cmd => C_SET,
+			subType => $msg->{subType},
+			payload => ReadingsVal($hash->{NAME},$readingname,$val)
+		);
+	};
+	refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
+	Log3 ($hash->{NAME}, 4, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_REQ-message ".GP_Catch($@)) if $@;
 }
 
 sub onInternalMessage($$) {
@@ -595,15 +621,55 @@ sub onInternalMessage($$) {
       $hash->{$typeStr} = $msg->{payload};
       last;
     };
+	$type == I_HEARTBEAT_REQUEST and do {
+ 	  $hash->{$typeStr} = $msg->{payload};
+	  eval {
+		sendMessage($hash,radioId => 0, childId => 0, cmd => C_INTERNAL, ack => 0, subType => I_INCLUSION_MODE, payload => $value eq 'on' ? 1 : 0);
+		sendClientMessage($hash,
+			childId => $msg->{childId},
+			cmd => C_INTERNAL,
+			subType => I_HEARTBEAT_RESPONSE
+		);
+	  };
+	  refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
+      last;
+    };
+	$type == I_PRESENTATION and do {
+      $hash->{$typeStr} = $msg->{payload};
+      last;
+    };$type == I_DISCOVER_REQUEST and do {
+      $hash->{$typeStr} = $msg->{payload};
+      last;
+    };$type == I_DISCOVER_RESPONSE and do {
+      $hash->{$typeStr} = $msg->{payload};
+      last;
+    };$type == I_HEARTBEAT_RESPONSE and do {
+      readingsSingleUpdate($hash, "heartbeat", "last", 0);
+	  refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
+	  $hash->{$typeStr} = $msg->{payload};
+      last;
+    };$type == I_LOCKED and do {
+      $hash->{$typeStr} = $msg->{payload};
+      last;
+    };$type == I_REGISTRATION_REQUEST and do {
+      $hash->{$typeStr} = $msg->{payload};
+      last;
+    };$type == I_REGISTRATION_RESPONSE and do {
+      $hash->{$typeStr} = $msg->{payload};
+      last;
+    };$type == I_DEBUG and do {
+      $hash->{$typeStr} = $msg->{payload};
+      last;
+    }; 
   }
 }
 
 sub sendClientMessage($%) {
-  my ($hash,%msg) = @_;
-  $msg{radioId} = $hash->{radioId};
-  $msg{ack} = $hash->{ack} unless defined $msg{ack};
-  sendMessage($hash->{IODev},%msg);
-  refreshInternalMySTimer($hash,"Ack") if (($hash->{ack} or $hash->{IODev}->{ack}) and $hash->{timeoutAck}) ; 
+	my ($hash,%msg) = @_;
+	$msg{radioId} = $hash->{radioId};
+	$msg{ack} = $hash->{ack} unless defined $msg{ack};
+	sendMessage($hash->{IODev},%msg);
+	refreshInternalMySTimer($hash,"Ack") if (($hash->{ack} or $hash->{IODev}->{ack}) and $hash->{timeoutAck}) ; 
 }
 
 sub rawToMappedReading($$$$) {
@@ -638,44 +704,44 @@ sub mappedReadingToRaw($$$) {
 }
 
 sub refreshInternalMySTimer($$) {
-  my ($hash,$calltype) = @_;
-  my $name = $hash->{NAME};
-  Log3 $name, 5, "$name: refreshInternalMySTimer called ($calltype)";
-  if ($calltype eq "Alive") {
-    RemoveInternalTimer("timeoutAlive:$name");
-    my $nextTrigger = main::gettimeofday() + $hash->{timeoutAlive};
-    InternalTimer($nextTrigger, "MYSENSORS::DEVICE::timeoutMySTimer", "timeoutAlive:$name", 0);
-    if ($hash->{STATE} ne "NACK" or $hash->{STATE} eq "NACK" and @{$hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}} == 0) {
-		my $do_trigger = $hash->{STATE} ne "alive" ? 1 : 0;
-		readingsSingleUpdate($hash,"state","alive",$do_trigger);
-    }
-  } elsif ($calltype eq "Ack") {
-    RemoveInternalTimer("timeoutAck:$name");
-    my $nextTrigger = main::gettimeofday() + $hash->{timeoutAck};
-    InternalTimer($nextTrigger, "MYSENSORS::DEVICE::timeoutMySTimer", "timeoutAck:$name", 0);
-    Log3 $name, 4, "$name: Ack timeout timer set at $nextTrigger";
-  }
+	my ($hash,$calltype) = @_;
+	my $name = $hash->{NAME};
+	Log3 $name, 5, "$name: refreshInternalMySTimer called ($calltype)";
+	if ($calltype eq "Alive") {
+		RemoveInternalTimer("timeoutAlive:$name");
+		my $nextTrigger = main::gettimeofday() + $hash->{timeoutAlive};
+		InternalTimer($nextTrigger, "MYSENSORS::DEVICE::timeoutMySTimer", "timeoutAlive:$name", 0);
+			if ($hash->{STATE} ne "NACK" or $hash->{STATE} eq "NACK" and @{$hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}} == 0) {
+				my $do_trigger = $hash->{STATE} ne "alive" ? 1 : 0;
+				readingsSingleUpdate($hash,"state","alive",$do_trigger);
+			}
+	} elsif ($calltype eq "Ack") {
+		RemoveInternalTimer("timeoutAck:$name");
+		my $nextTrigger = main::gettimeofday() + $hash->{timeoutAck};
+		InternalTimer($nextTrigger, "MYSENSORS::DEVICE::timeoutMySTimer", "timeoutAck:$name", 0);
+		Log3 $name, 4, "$name: Ack timeout timer set at $nextTrigger";
+	}
 }
 
 sub timeoutMySTimer($) {
-    my ($calltype, $name) = split(':', $_[0]);
-    my $hash = $main::defs{$name};
-    Log3 $name, 5, "$name: timeoutMySTimer called ($calltype)";
-    if ($calltype eq "timeoutAlive") {
-        readingsSingleUpdate($hash,"state","dead",1) unless ($hash->{STATE} eq "NACK");
-    } elsif ($calltype eq "timeoutAck") {
-	#readingsSingleUpdate($hash,"state","timeoutAck passed",1);# if ($hash->{STATE} eq "NACK");
-	if ($hash->{IODev}->{outstandingAck} == 0) {
-	    Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), no outstanding Acks at all";
-	    readingsSingleUpdate($hash,"state","alive",1) if ($hash->{STATE} eq "NACK");
-	} elsif (@{$hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}}) {
-	    Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), outstanding: $hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}";
-	    readingsSingleUpdate($hash,"state","NACK",1) ;
-	} else {
-	    Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), no outstanding Acks for Node";
-	    readingsSingleUpdate($hash,"state","alive",1) if ($hash->{STATE} eq "NACK");
+	my ($calltype, $name) = split(':', $_[0]);
+	my $hash = $main::defs{$name};
+	Log3 $name, 5, "$name: timeoutMySTimer called ($calltype)";
+	if ($calltype eq "timeoutAlive") {
+		readingsSingleUpdate($hash,"state","dead",1) unless ($hash->{STATE} eq "NACK");
+	} elsif ($calltype eq "timeoutAck") {
+		#readingsSingleUpdate($hash,"state","timeoutAck passed",1);# if ($hash->{STATE} eq "NACK");
+		if ($hash->{IODev}->{outstandingAck} == 0) {
+			Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), no outstanding Acks at all";
+			readingsSingleUpdate($hash,"state","alive",1) if ($hash->{STATE} eq "NACK");
+		} elsif (@{$hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}}) {
+			Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), outstanding: $hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}";
+			readingsSingleUpdate($hash,"state","NACK",1) ;
+		} else {
+			Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), no outstanding Acks for Node";
+			readingsSingleUpdate($hash,"state","alive",1) if ($hash->{STATE} eq "NACK");
+		}
 	}
-    }
 }
 
 1;
@@ -690,77 +756,54 @@ sub timeoutMySTimer($) {
 <a name="MYSENSORS_DEVICE"></a>
 <h3>MYSENSORS_DEVICE</h3>
 <ul>
-  <p>represents a mysensors sensor attached to a mysensor-node</p>
-  <p>requires a <a href="#MYSENSOR">MYSENSOR</a>-device as IODev</p>
-  <a name="MYSENSORS_DEVICE define"></a>
-  <p><b>Define</b></p>
-  <ul>
-    <p><code>define &lt;name&gt; MYSENSORS_DEVICE &lt;Sensor-type&gt; &lt;node-id&gt;</code><br/>
-      Specifies the MYSENSOR_DEVICE device.</p>
-  </ul>
-  <a name="MYSENSORS_DEVICEset"></a>
-  <p><b>Set</b></p>
-  <ul>
-    <li>
-      <p><code>set &lt;name&gt; clear</code><br/>
-         clears routing-table of a repeater-node</p>
-    </li>
-    <li>
-      <p><code>set &lt;name&gt; time</code><br/>
-         sets time for nodes (that support it)</p>
-    </li>
-    <li>
-      <p><code>set &lt;name&gt; reboot</code><br/>
-         reboots a node (requires a bootloader that supports it).<br/>
-         Attention: Nodes that run the standard arduino-bootloader will enter a bootloop!<br/>
-         Dis- and reconnect the nodes power to restart in this case.</p>
-    </li>
-  </ul>
-  <a name="MYSENSORS_DEVICEattr"></a>
-  <p><b>Attributes</b></p>
-  <ul>
-    <li>
-      <p><code>attr &lt;name&gt; config [&lt;M|I&gt;]</code><br/>
-         configures metric (M) or inch (I). Defaults to 'M'</p>
-    </li>
-    <li>
-      <p><code>attr &lt;name&gt; setCommands [&lt;command:reading:value&gt;]*</code><br/>
-         configures one or more commands that can be executed by set.<br/>
-         e.g.: <code>attr &lt;name&gt; setCommands on:switch_1:on off:switch_1:off</code><br/>
-         if list of commands contains both 'on' and 'off' <a href="#setExtensions">set extensions</a> are supported</p>
-    </li>
-    <li>
-      <p><code>attr &lt;name&gt; setReading_&lt;reading&gt; [&lt;value&gt;]*</code><br/>
-         configures a reading that can be modified by set-command<br/>
-         e.g.: <code>attr &lt;name&gt; setReading_switch_1 on,off</code></p>
-    </li>
-    <li>
-      <p><code>attr &lt;name&gt; mapReading_&lt;reading&gt; &lt;childId&gt; &lt;readingtype&gt; [&lt;value&gt;:&lt;mappedvalue&gt;]*</code><br/>
-         configures the reading-name for a given childId and sensortype<br/>
-         E.g.: <code>attr xxx mapReading_aussentemperatur 123 temperature</code></p>
-    </li>
-    <li>
-      <p><code>att &lt;name&gt; requestAck</code><br/>
-         request acknowledge from nodes.<br/>
-         if set the Readings of nodes are updated not before requested acknowledge is received<br/>
-         if not set the Readings of nodes are updated immediatly (not awaiting the acknowledge).<br/>
-         May also be configured on the gateway for all nodes at once</p>
-    </li>
-    <li>
-      <p><code>attr &lt;name&gt; mapReadingType_&lt;reading&gt; &lt;new reading name&gt; [&lt;value&gt;:&lt;mappedvalue&gt;]*</code><br/>
-         configures reading type names that should be used instead of technical names<br/>
-         E.g.: <code>attr xxx mapReadingType_LIGHT switch 0:on 1:off</code>
-         to be used for mysensor Variabletypes that have no predefined defaults (yet)</p>
-    </li>
-    <li>
-      <p><code>attr &lt;name&gt; timeoutAck &lt;time in seconds&gt;*</code><br/>
-         configures timeout to set device state to NACK in case not all requested acks are received</p>
-    </li>
-    <li>
-      <p><code>attr &lt;name&gt; timeoutAlive &lt;time in seconds&gt;*</code><br/>
-         configures timeout to set device state to alive or dead. If messages from node are received within timout spec, state will be alive, otherwise dead. If state is NACK (in case timeoutAck is also set), state will only be changed to alive, if there are no outstanding messages to be sent.</p>
-    </li>
-  </ul>
+	<p>represents a mysensors sensor attached to a mysensor-node</p>
+	<p>requires a <a href="#MYSENSOR">MYSENSOR</a>-device as IODev</p>
+	<a name="MYSENSORS_DEVICE define"></a>
+	<p><b>Define</b></p>
+	<ul>
+		<p><code>define &lt;name&gt; MYSENSORS_DEVICE &lt;Sensor-type&gt; &lt;node-id&gt;</code><br/>Specifies the MYSENSOR_DEVICE device.</p>
+	</ul>
+	<a name="MYSENSORS_DEVICEset"></a>
+	<p><b>Set</b></p>
+	<ul>
+		<li>
+			<p><code>set &lt;name&gt; clear</code><br/>clears routing-table of a repeater-node</p>
+		</li>
+		<li>
+			<p><code>set &lt;name&gt; time</code><br/>sets time for nodes (that support it)</p>
+		</li>
+		<li>
+			<p><code>set &lt;name&gt; reboot</code><br/>reboots a node (requires a bootloader that supports it).<br/>Attention: Nodes that run the standard arduino-bootloader will enter a bootloop!<br/>Dis- and reconnect the nodes power to restart in this case.</p>
+		</li>
+	</ul>
+	<a name="MYSENSORS_DEVICEattr"></a>
+	<p><b>Attributes</b></p>
+	<ul>
+		<li>
+			<p><code>attr &lt;name&gt; config [&lt;M|I&gt;]</code><br/>configures metric (M) or inch (I). Defaults to 'M'</p>
+		</li>
+		<li>
+			<p><code>attr &lt;name&gt; setCommands [&lt;command:reading:value&gt;]*</code><br/>configures one or more commands that can be executed by set.<br/>e.g.: <code>attr &lt;name&gt; setCommands on:switch_1:on off:switch_1:off</code><br/>if list of commands contains both 'on' and 'off' <a href="#setExtensions">set extensions</a> are supported</p>
+		</li>
+		<li>
+			<p><code>attr &lt;name&gt; setReading_&lt;reading&gt; [&lt;value&gt;]*</code><br/>configures a reading that can be modified by set-command<br/>e.g.: <code>attr &lt;name&gt; setReading_switch_1 on,off</code></p>
+		</li>
+		<li>
+			<p><code>attr &lt;name&gt; mapReading_&lt;reading&gt; &lt;childId&gt; &lt;readingtype&gt; [&lt;value&gt;:&lt;mappedvalue&gt;]*</code><br/>configures the reading-name for a given childId and sensortype<br/>e.g.: <code>attr xxx mapReading_aussentemperatur 123 temperature</code></p>
+		</li>
+		<li>
+			<p><code>att &lt;name&gt; requestAck</code><br/>request acknowledge from nodes.<br/>if set the Readings of nodes are updated not before requested acknowledge is received<br/>if not set the Readings of nodes are updated immediatly (not awaiting the acknowledge).<br/>May also be configured on the gateway for all nodes at once</p>
+		</li>
+		<li>
+			<p><code>attr &lt;name&gt; mapReadingType_&lt;reading&gt; &lt;new reading name&gt; [&lt;value&gt;:&lt;mappedvalue&gt;]*</code><br/>configures reading type names that should be used instead of technical names<br/>e.g.: <code>attr xxx mapReadingType_LIGHT switch 0:on 1:off</code>to be used for mysensor Variabletypes that have no predefined defaults (yet)</p>
+		</li>
+		<li>
+			<p><code>attr &lt;name&gt; timeoutAck &lt;time in seconds&gt;*</code><br/>configures timeout to set device state to NACK in case not all requested acks are received</p>
+		</li>
+		<li>
+			<p><code>attr &lt;name&gt; timeoutAlive &lt;time in seconds&gt;*</code><br/>configures timeout to set device state to alive or dead. If messages from node are received within timout spec, state will be alive, otherwise dead. If state is NACK (in case timeoutAck is also set), state will only be changed to alive, if there are no outstanding messages to be sent.</p>
+		</li>
+</ul>
 </ul>
 
 =end html
