@@ -420,7 +420,7 @@ sub sendMessage($%) {
   my $txt = createMsg(%msg);
   Log3 ($hash->{NAME},5,"MYSENSORS send: ".dumpMsg(\%msg));
   DevIo_SimpleWrite($hash,"$txt\n",undef);
-  if ($msg{ack}) {
+  if ($msg{ack} and $msg{cmd} != C_INTERNAL) {
     my $messagesForRadioId = $hash->{messagesForRadioId}->{$msg{radioId}};
     unless (defined $messagesForRadioId) {
       $messagesForRadioId = {
