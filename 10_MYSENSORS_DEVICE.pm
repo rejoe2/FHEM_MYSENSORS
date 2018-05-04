@@ -286,19 +286,19 @@ sub Get($@) {
   
   COMMAND_HANDLER: {
     $command eq "version" and do {
-      sendClientMessage($hash, $hash->{radioId}, cmd => C_INTERNAL, subType => I_VERSION);
+      sendClientMessage($hash, $hash->{radioId}, cmd => C_INTERNAL, ack => 0, subType => I_VERSION);
       last;
     };
     $command eq "heartbeat" and do {
-      sendClientMessage($hash, $hash->{radioId}, cmd => C_INTERNAL, subType => I_HEARTBEAT_REQUEST);
+      sendClientMessage($hash, $hash->{radioId}, cmd => C_INTERNAL, ack => 0, subType => I_HEARTBEAT_REQUEST);
       last;
     };
     $command eq "presentation" and do {
-      sendClientMessage($hash, $hash->{radioId}, cmd => C_INTERNAL, subType => I_PRESENTATION);
+      sendClientMessage($hash, $hash->{radioId}, cmd => C_INTERNAL, ack => 0, subType => I_PRESENTATION);
       last;
     };
     $command eq "RSSI" and do {
-      sendClientMessage($hash, $hash->{radioId}, cmd => C_INTERNAL, subType => I_SIGNAL_REPORT_REQUEST);
+      sendClientMessage($hash, $hash->{radioId}, cmd => C_INTERNAL, ack => 0, subType => I_SIGNAL_REPORT_REQUEST);
       last;
     };
   }
@@ -632,13 +632,8 @@ sub onInternalMessage($$) {
     $type == I_HEARTBEAT_REQUEST and do {
       $hash->{$typeStr} = $msg->{payload};
       eval {
-	sendMessage($hash,radioId => 0, childId => 0, cmd => C_INTERNAL, ack => 0, subType => I_HEARTBEAT_RESPONSE);
-	sendClientMessage($hash,
-	    childId => $msg->{childId},
-	    cmd => C_INTERNAL,
-	    subType => I_HEARTBEAT_RESPONSE
-	);
-      };
+	    sendMessage($hash,radioId => 0, childId => 0, cmd => C_INTERNAL, ack => 0, subType => I_HEARTBEAT_RESPONSE);
+	  };
       refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
       last;
     };
