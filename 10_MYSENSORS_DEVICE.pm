@@ -28,9 +28,9 @@ use strict;
 use warnings;
 
 my %gets = (
-  "version"      => 1,
+#  "version"      => 1,
   "heartbeat"    => 1, #request node to send hearbeat, MySensorsCore.cpp L 429
-  "presentation" => 1, #request node to redo presentation, MySensorsCore.cpp L 426
+#  "presentation" => 1, #request node to redo presentation, MySensorsCore.cpp L 426
   "RSSI"         => 1, #request RSSI values (available only for recent versions, not for all transceiver types
 );
 
@@ -118,8 +118,8 @@ my %static_types = (
   S_CUSTOM                => { receives => [V_VAR1,V_VAR2,V_VAR3,V_VAR4,V_VAR5], sends => [V_VAR1,V_VAR2,V_VAR3,V_VAR4,V_VAR5] }, # Use this for custom sensors where no other fits.
   S_DUST                  => { receives => [], sends => [V_LEVEL,V_UNIT_PREFIX] }, # Dust level sensor
   S_SCENE_CONTROLLER      => { receives => [], sends => [V_SCENE_ON,V_SCENE_OFF] }, # Scene controller device
-  S_RGB_LIGHT             => { receives => [V_RGB,V_WATT], sends => [V_RGB,V_WATT] }, # RGB light
-  S_RGBW_LIGHT            => { receives => [V_RGBW,V_WATT], sends => [V_RGBW,V_WATT] }, # RGBW light (with separate white component)
+  S_RGB_LIGHT             => { receives => [V_RGB,V_WATT,V_PERCENTAGE], sends => [V_RGB,V_WATT,V_PERCENTAGE] }, # RGB light
+  S_RGBW_LIGHT            => { receives => [V_RGBW,V_WATT,V_PERCENTAGE], sends => [V_RGBW,V_WATT,V_PERCENTAGE] }, # RGBW light (with separate white component)
   S_COLOR_SENSOR          => { receives => [V_RGB], sends => [V_RGB] }, # Color sensor
   S_HVAC                  => { receives => [], sends => [V_STATUS,V_TEMP,V_HVAC_SETPOINT_HEAT,V_HVAC_SETPOINT_COOL,V_HVAC_FLOW_STATE,V_HVAC_FLOW_MODE,V_HVAC_SPEED] }, # Thermostat/HVAC device
   S_MULTIMETER            => { receives => [], sends => [V_VOLTAGE,V_CURRENT,V_IMPEDANCE] }, # Multimeter device
@@ -543,8 +543,10 @@ sub onInternalMessage($$) {
   my $typeStr = internalMessageTypeToStr($type);
   INTERNALMESSAGE: {
     $type == I_BATTERY_LEVEL and do {
-      readingsSingleUpdate($hash, "batterylevel", $msg->{payload}, 1);
-      Log3 ($name, 4, "MYSENSORS_DEVICE $name: batterylevel $msg->{payload}");
+    #  readingsSingleUpdate($hash, "batterylevel", $msg->{payload}, 1);
+    #  Log3 ($name, 3, "MYSENSORS_DEVICE $name: batterylevel is deprecated and will be removed soon, use batteryPercent instead (Forum #87575)");
+      readingsSingleUpdate($hash, "batteryPercent", $msg->{payload}, 1);
+      Log3 ($name, 4, "MYSENSORS_DEVICE $name: batteryPercent $msg->{payload}");
       last;
     };
     $type == I_TIME and do {
@@ -600,17 +602,17 @@ sub onInternalMessage($$) {
       last;
     };
     $type == I_SKETCH_NAME and do {
-      $hash->{$typeStr} = $msg->{payload};
+      #$hash->{$typeStr} = $msg->{payload};
       readingsSingleUpdate($hash, "SKETCH_NAME", $msg->{payload}, 1);
       last;
     };
     $type == I_SKETCH_VERSION and do {
-      $hash->{$typeStr} = $msg->{payload};
+      #$hash->{$typeStr} = $msg->{payload};
       readingsSingleUpdate($hash, "SKETCH_VERSION", $msg->{payload}, 1);
       last;
     };
     $type == I_REBOOT and do {
-      $hash->{$typeStr} = $msg->{payload};
+      #$hash->{$typeStr} = $msg->{payload};
       last;
     };
     $type == I_GATEWAY_READY and do {
@@ -638,15 +640,15 @@ sub onInternalMessage($$) {
       last;
     };
     $type == I_PRESENTATION and do {
-      $hash->{$typeStr} = $msg->{payload};
+      #$hash->{$typeStr} = $msg->{payload};
       last;
     };
     $type == I_DISCOVER_REQUEST and do {
-      $hash->{$typeStr} = $msg->{payload};
+      #$hash->{$typeStr} = $msg->{payload};
       last;
     };
     $type == I_DISCOVER_RESPONSE and do {
-      $hash->{$typeStr} = $msg->{payload};
+      #$hash->{$typeStr} = $msg->{payload};
       last;
     };
     $type == I_HEARTBEAT_RESPONSE and do {
@@ -672,22 +674,22 @@ sub onInternalMessage($$) {
       last;
     }; 
     $type == I_SIGNAL_REPORT_REVERSE and do {
-      $hash->{$typeStr} = $msg->{payload};
+      #$hash->{$typeStr} = $msg->{payload};
       readingsSingleUpdate($hash, "RSSI_back", $msg->{payload}, 1);
     last;
     }; 
     $type == I_SIGNAL_REPORT_RESPONSE and do {
-      $hash->{$typeStr} = $msg->{payload};
+      #$hash->{$typeStr} = $msg->{payload};
       readingsSingleUpdate($hash, "RSSI_to", $msg->{payload}, 1);
     last;
     }; 
     $type == I_PRE_SLEEP_NOTIFICATION and do {
-      $hash->{$typeStr} = $msg->{payload};
+      #$hash->{$typeStr} = $msg->{payload};
       readingsSingleUpdate($hash, "nowSleeping", "1", 0);
       last;
     }; 
     $type == I_POST_SLEEP_NOTIFICATION and do {
-      $hash->{$typeStr} = $msg->{payload};
+      #$hash->{$typeStr} = $msg->{payload};
       readingsSingleUpdate($hash, "nowSleeping", "0", 0);
       #here we can send out retained and outstanding messages
       $hash->{nexttry} = -1;
