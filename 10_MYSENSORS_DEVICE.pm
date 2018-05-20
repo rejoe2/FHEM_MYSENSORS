@@ -632,7 +632,7 @@ sub onInternalMessage($$) {
       last;
     };
     $type == I_HEARTBEAT_REQUEST and do {
-      $hash->{$typeStr} = $msg->{payload};
+      #$hash->{$typeStr} = $msg->{payload};
       eval {
         sendMessage($hash->{IODev},radioId => 0, childId => 0, cmd => C_INTERNAL, ack => 0, subType => I_HEARTBEAT_RESPONSE);
       };
