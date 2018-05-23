@@ -515,7 +515,7 @@ sub onSetMessage($$) {
         readingsSingleUpdate($hash, $reading, $value, 1);
     };
     Log3 ($hash->{NAME}, 4, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_SET-message ".GP_Catch($@)) if $@;
-    refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
+    refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive}; #deactivate in case of wanted reduction of alive to internal (heartbeat/battery/smartsleep) messages
     } else {
     Log3 ($hash->{NAME}, 5, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_SET-message without payload");
     };
@@ -546,6 +546,7 @@ sub onInternalMessage($$) {
     #  readingsSingleUpdate($hash, "batterylevel", $msg->{payload}, 1);
     #  Log3 ($name, 3, "MYSENSORS_DEVICE $name: batterylevel is deprecated and will be removed soon, use batteryPercent instead (Forum #87575)");
       readingsSingleUpdate($hash, "batteryPercent", $msg->{payload}, 1);
+      refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
       Log3 ($name, 4, "MYSENSORS_DEVICE $name: batteryPercent $msg->{payload}");
       last;
     };
@@ -686,11 +687,13 @@ sub onInternalMessage($$) {
     $type == I_PRE_SLEEP_NOTIFICATION and do {
       #$hash->{$typeStr} = $msg->{payload};
       readingsSingleUpdate($hash, "nowSleeping", "1", 0);
+      refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
       last;
     }; 
     $type == I_POST_SLEEP_NOTIFICATION and do {
       #$hash->{$typeStr} = $msg->{payload};
       readingsSingleUpdate($hash, "nowSleeping", "0", 0);
+      refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
       #here we can send out retained and outstanding messages
       $hash->{nexttry} = -1;
       MYSENSORS::Timer($hash);	 
