@@ -676,12 +676,12 @@ sub onInternalMessage($$) {
     }; 
     $type == I_SIGNAL_REPORT_REVERSE and do {
       #$hash->{$typeStr} = $msg->{payload};
-      readingsSingleUpdate($hash, "RSSI_back", $msg->{payload}, 1);
+      readingsSingleUpdate($hash, "rssi_DEVICE", $msg->{payload}, 1) if ($msg->{payload} > -256 );
     last;
     }; 
     $type == I_SIGNAL_REPORT_RESPONSE and do {
       #$hash->{$typeStr} = $msg->{payload};
-      readingsSingleUpdate($hash, "RSSI_to", $msg->{payload}, 1);
+      readingsSingleUpdate($hash, "rssi_at_IODev", $msg->{payload}, 1) if ($msg->{payload} > -256 );
     last;
     }; 
     $type == I_PRE_SLEEP_NOTIFICATION and do {
