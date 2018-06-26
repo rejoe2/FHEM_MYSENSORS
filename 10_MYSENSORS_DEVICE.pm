@@ -277,6 +277,9 @@ sub Set($@) {
 				Log3 ($name,4,"Startet flashing Firmware: Optiboot method");
 				return flashFirmware($hash, $fwType);
 			} elsif ($blType eq "MYSBootloader") {
+				$hash->{flashProcedureStatus} = 1;
+				#also add option to change IO during update (allows other channels than 76 for regular GW)?
+				#if alternative IO attr exists: store regular IODev in a reading, and resore that after update or if there's no communication to the node for too a longer periode
 				Log3 ($name,4,"Send reboot command to MYSBootloader node to start update");
 				sendClientMessage($hash, childId => 255, cmd => C_INTERNAL, subType => I_REBOOT);
 			} else {
@@ -391,8 +394,9 @@ sub onStreamMessage($$) {
 				if ((AttrVal($name, "autoUpdate", 0) == 1) && ($blVersion eq "3.0" or $blType eq "Optiboot")) {
 					Log3($name, 4, "$name: Optiboot BL, Node set to autoUpdate => calling firmware update procedure");
 					flashFirmware($hash, $fwType);
-				} elsif ($blType eq "MYSBootloader") {
+				} elsif ($blType eq "MYSBootloader" and $hash->{flashProcedureStatus}) {
 					Log3($name, 4, "$name: MYSBootloader asking for firmware update, calling firmware update procedure");
+					$hash->{flashProcedureStatus} = 2;
 					flashFirmware($hash, $fwType);
 				}
 			} else {
@@ -759,6 +763,8 @@ sub onInternalMessage($$) {
 		};
 		$type == I_PRESENTATION and do {
 			#$hash->{$typeStr} = $msg->{payload};
+			undef $hash->{flashProcedureStatus};
+			#if changed, revert IO back to regular one?
 			last;
 		};
 		$type == I_DISCOVER_REQUEST and do {
