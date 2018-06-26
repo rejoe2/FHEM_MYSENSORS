@@ -373,6 +373,7 @@ sub onStreamMessage($$) {
 	my $name = $hash->{NAME};
 	my $type = $msg->{subType};
 	my $typeStr = datastreamTypeToStr($type);
+	my $blType = AttrVal($name, "BL_Type", "");
 
 	TYPE_HANDLER: {
 		$type == ST_FIRMWARE_CONFIG_REQUEST and do {
@@ -387,8 +388,11 @@ sub onStreamMessage($$) {
 				readingsBulkUpdate($hash, 'BL_VERSION', $blVersion);
 				readingsEndUpdate($hash, 1);
 				Log3($name, 4, "$name: received ST_FIRMWARE_CONFIG_REQUEST");
-				if ((AttrVal($name, "autoUpdate", 0) == 1) && ($blVersion eq "3.0" or $blType eq "Optiboot" or $blType eq "MYSBootloader")) {
-					Log3($name, 4, "$name: Bootloader matches, calling firmware update procedure");
+				if ((AttrVal($name, "autoUpdate", 0) == 1) && ($blVersion eq "3.0" or $blType eq "Optiboot")) {
+					Log3($name, 4, "$name: Optiboot BL, Node set to autoUpdate => calling firmware update procedure");
+					flashFirmware($hash, $fwType);
+				} elsif ($blType eq "MYSBootloader") {
+					Log3($name, 4, "$name: MYSBootloader asking for firmware update, calling firmware update procedure");
 					flashFirmware($hash, $fwType);
 				}
 			} else {
