@@ -37,7 +37,7 @@ sub MYSENSORS_DEVICE_Initialize($) {
   $hash->{SetFn}    = "MYSENSORS::DEVICE::Set";
   $hash->{GetFn}    = "MYSENSORS::DEVICE::Get";
   $hash->{AttrFn}   = "MYSENSORS::DEVICE::Attr";
-  
+
   $hash->{AttrList} =
     "config:M,I " .
     "mode:node,repeater " .
@@ -46,7 +46,7 @@ sub MYSENSORS_DEVICE_Initialize($) {
     "setReading_.+ " .
     "mapReadingType_.+ " .
     "mapReading_.+ " .
-    "requestAck:1 " . 
+    "requestAck:1 " .
     "timeoutAck " .
     "timeoutAlive " .
     "IODev " .
@@ -215,117 +215,110 @@ my %static_mappings = (
 );
 
 sub Define($$) {
-  my ( $hash, $def ) = @_;
-  my ($name, $type, $radioId) = split("[ \t]+", $def);
-  return "requires 1 parameters" unless (defined $radioId and $radioId ne "");
-  $hash->{radioId} = $radioId;
-  $hash->{sets} = {
-    'time' => "noArg",
-    'reboot' => "noArg",
-    'clear' => "noArg",
-    'flash'  => "noArg",
-    'fwType' => "",
-  };
-  
-  $hash->{ack} = 0;
-  $hash->{typeMappings} = {map {variableTypeToIdx($_) => $static_mappings{$_}} keys %static_mappings};
-  $hash->{sensorMappings} = {map {sensorTypeToIdx($_) => $static_types{$_}} keys %static_types};
+	my ( $hash, $def ) = @_;
+	my ($name, $type, $radioId) = split("[ \t]+", $def);
+	return "requires 1 parameters" unless (defined $radioId and $radioId ne "");
+	$hash->{radioId} = $radioId;
+	$hash->{sets} = {
+		'time' => "noArg",
+		'reboot' => "noArg",
+		'clear' => "noArg",
+		'flash'  => "noArg",
+		'fwType' => "",
+	};
 
-  $hash->{readingMappings} = {};
-  AssignIoPort($hash);
+	$hash->{ack} = 0;
+	$hash->{typeMappings} = {map {variableTypeToIdx($_) => $static_mappings{$_}} keys %static_mappings};
+	$hash->{sensorMappings} = {map {sensorTypeToIdx($_) => $static_types{$_}} keys %static_types};
+	$hash->{readingMappings} = {};
+	AssignIoPort($hash);
 };
 
 sub UnDefine($) {
-  my ($hash) = @_;
-  my $name = $hash->{NAME};
-  RemoveInternalTimer("timeoutAck:$name");
-  RemoveInternalTimer("timeoutAlive:$name");
-  return undef;
+	my ($hash) = @_;
+	my $name = $hash->{NAME};
+	RemoveInternalTimer("timeoutAck:$name");
+	RemoveInternalTimer("timeoutAlive:$name");
+	return undef;
 }
 
 sub Set($@) {
-  my ($hash,$name,$command,@values) = @_;
-  return "Need at least one parameters" unless defined $command;
-  if(!defined($hash->{sets}->{$command})) {
-    $hash->{sets}->{fwType} = join(",", getFirmwareTypes($hash->{IODev}));
-    my $list = join(" ", map {$hash->{sets}->{$_} ne "" ? "$_:$hash->{sets}->{$_}" : $_} sort keys %{$hash->{sets}});
-    $hash->{sets}->{fwType} = "";
-    return grep (/(^on$)|(^off$)/,keys %{$hash->{sets}}) == 2 ? SetExtensions($hash, $list, $name, $command, @values) : "Unknown argument $command, choose one of $list";
-  }
-  COMMAND_HANDLER: {
-#    $command eq "clear" and do {
-#	  # Test 102 anstatt 255 :) und Log
-#      sendClientMessage($hash, childId => 255, cmd => C_INTERNAL, subType => I_CHILDREN, payload => "C");
-#	  Log3 ($name,3,"MYSENSORS_DEVICE $name: clear");
-#	  # Test
-#      last;
-#    };
-    $command eq "time" and do {
-      sendClientMessage($hash, childId => 255, cmd => C_INTERNAL, subType => I_TIME, payload => time);
-      last;
-    };
-    $command eq "reboot" and do {
-      sendClientMessage($hash, childId => 255, cmd => C_INTERNAL, subType => I_REBOOT);
-      last;
-    };
-    $command eq "clear" and do {
-      sendClientMessage($hash, childId => 255, cmd => C_INTERNAL, subType => I_DEBUG, payload => "E");
-      last;
-    };
-    $command eq "flash" and do {
-      my $blVersion = ReadingsVal($name, "BL_VERSION", "");
-	  my $blType = AttrVal($name, "BL_Type", "");
-	  my $fwType = ReadingsNum($name, "FW_TYPE", -1);
-      if ($fwType == -1) {
-		Log3 ($name,3,"Firmware type not defined (FW_TYPE) for $name, update not started");
-		return "$name: Firmware type not defined (FW_TYPE)";
-	  } elsif ($blVersion eq "3.0" or $blType eq "Optiboot") {
-		Log3 ($name,4,"Startet flashing Firmware: Optiboot method");
-        return flashFirmware($hash, $fwType);
-      } elsif ($blType eq "MYSBootloader") {
-		  Log3 ($name,4,"Send reboot command to MYSBootloader node to start update");
-		  sendClientMessage($hash, childId => 255, cmd => C_INTERNAL, subType => I_REBOOT);		
-		  
-      } else {
-		return "$name: No valid BL_Type specified" if ($blVersion eq "");
-        return "$name: Expected bootloader version 3.0 but found: $blVersion or specify a valid BL_Type";
-      }
-      last;
-    };
-    $command eq "fwType" and do {
-      if (@values == 1) {
-        my ($type) = @values;
-        if ($type =~ /^[[:digit:]]$/) {
-          readingsSingleUpdate($hash, 'FW_TYPE', $type, 1);
-        } else {
-          return "fwType must be numeric";
-        }
-      }
-	  last;
-    };
-    (defined ($hash->{setcommands}->{$command})) and do {
-      my $setcommand = $hash->{setcommands}->{$command};
-      eval {
-        my ($type,$childId,$mappedValue) = mappedReadingToRaw($hash,$setcommand->{var},$setcommand->{val});
-        sendClientMessage($hash,
-          childId => $childId,
-          cmd => C_SET,
-          subType => $type,
-          payload => $mappedValue,
-        );
-    readingsSingleUpdate($hash,$setcommand->{var},$setcommand->{val},1) unless ($hash->{ack} or $hash->{IODev}->{ack});
-    };
-      return "$command not defined: ".GP_Catch($@) if $@;
-      last;
-    };
-    my $value = @values ? join " ",@values : "";
-    eval {
-      my ($type,$childId,$mappedValue) = mappedReadingToRaw($hash,$command,$value);
-      sendClientMessage($hash, childId => $childId, cmd => C_SET, subType => $type, payload => $mappedValue);
-      readingsSingleUpdate($hash,$command,$value,1) unless ($hash->{ack} or $hash->{IODev}->{ack});
-    };
-    return "$command not defined: ".GP_Catch($@) if $@;
-  }
+	my ($hash,$name,$command,@values) = @_;
+	return "Need at least one parameters" unless defined $command;
+	if(!defined($hash->{sets}->{$command})) {
+		$hash->{sets}->{fwType} = join(",", getFirmwareTypes($hash->{IODev}));
+		my $list = join(" ", map {$hash->{sets}->{$_} ne "" ? "$_:$hash->{sets}->{$_}" : $_} sort keys %{$hash->{sets}});
+		$hash->{sets}->{fwType} = "";
+		return grep (/(^on$)|(^off$)/,keys %{$hash->{sets}}) == 2 ? SetExtensions($hash, $list, $name, $command, @values) : "Unknown argument $command, choose one of $list";
+	}
+	
+	COMMAND_HANDLER: {
+		$command eq "time" and do {
+			sendClientMessage($hash, childId => 255, cmd => C_INTERNAL, subType => I_TIME, payload => time);
+			last;
+		};
+		$command eq "reboot" and do {
+			sendClientMessage($hash, childId => 255, cmd => C_INTERNAL, subType => I_REBOOT);
+			last;
+		};
+		$command eq "clear" and do {
+			sendClientMessage($hash, childId => 255, cmd => C_INTERNAL, subType => I_DEBUG, payload => "E");
+			Log3 ($name,3,"MYSENSORS_DEVICE $name: clear");
+			last;
+		};
+		$command eq "flash" and do {
+			my $blVersion = ReadingsVal($name, "BL_VERSION", "");
+			my $blType = AttrVal($name, "BL_Type", "");
+			my $fwType = ReadingsNum($name, "FW_TYPE", -1);
+			if ($fwType == -1) {
+				Log3 ($name,3,"Firmware type not defined (FW_TYPE) for $name, update not started");
+				return "$name: Firmware type not defined (FW_TYPE)";
+			} elsif ($blVersion eq "3.0" or $blType eq "Optiboot") {
+				Log3 ($name,4,"Startet flashing Firmware: Optiboot method");
+				return flashFirmware($hash, $fwType);
+			} elsif ($blType eq "MYSBootloader") {
+				Log3 ($name,4,"Send reboot command to MYSBootloader node to start update");
+				sendClientMessage($hash, childId => 255, cmd => C_INTERNAL, subType => I_REBOOT);
+			} else {
+				return "$name: No valid BL_Type specified" if ($blVersion eq "");
+				return "$name: Expected bootloader version 3.0 but found: $blVersion or specify a valid BL_Type";
+			}
+			last;
+		};
+		$command eq "fwType" and do {
+			if (@values == 1) {
+				my ($type) = @values;
+				if ($type =~ /^[[:digit:]]$/) {
+					readingsSingleUpdate($hash, 'FW_TYPE', $type, 1);
+				} else {
+					return "fwType must be numeric";
+				}
+			}
+			last;
+		};
+		(defined ($hash->{setcommands}->{$command})) and do {
+			my $setcommand = $hash->{setcommands}->{$command};
+			eval {
+				my ($type,$childId,$mappedValue) = mappedReadingToRaw($hash,$setcommand->{var},$setcommand->{val});
+				sendClientMessage($hash,
+					childId => $childId,
+					cmd => C_SET,
+					subType => $type,
+					payload => $mappedValue,
+				);
+				readingsSingleUpdate($hash,$setcommand->{var},$setcommand->{val},1) unless ($hash->{ack} or $hash->{IODev}->{ack});
+			};
+			return "$command not defined: ".GP_Catch($@) if $@;
+			last;
+		};
+		my $value = @values ? join " ",@values : "";
+		eval {
+			my ($type,$childId,$mappedValue) = mappedReadingToRaw($hash,$command,$value);
+			sendClientMessage($hash, childId => $childId, cmd => C_SET, subType => $type, payload => $mappedValue);
+			readingsSingleUpdate($hash,$command,$value,1) unless ($hash->{ack} or $hash->{IODev}->{ack});
+		};
+		return "$command not defined: ".GP_Catch($@) if $@;
+	}
 }
 
 sub Get($@) {
@@ -376,49 +369,52 @@ sub Get($@) {
 }
 
 sub onStreamMessage($$) {
-  my ($hash, $msg) = @_;
-  my $name = $hash->{NAME};
-  my $type = $msg->{subType};
-  my $typeStr = datastreamTypeToStr($type);
-  
-  COMMAND_HANDLER: {
-  $type == ST_FIRMWARE_CONFIG_REQUEST and do {
-    if (length($msg->{payload}) == 20) {
-      readingsBeginUpdate($hash);
-      my $fwType = hex2Short(substr($msg->{payload}, 0, 4));
-      readingsBulkUpdate($hash, 'FW_TYPE', $fwType);
-      readingsBulkUpdate($hash, 'FW_VERSION', hex2Short(substr($msg->{payload}, 4, 4)));
-      readingsBulkUpdate($hash, 'FW_BLOCKS', hex2Short(substr($msg->{payload}, 8, 4)));
-      readingsBulkUpdate($hash, 'FW_CRC', hex2Short(substr($msg->{payload}, 12, 4)));
-      my $blVersion = hex(substr($msg->{payload}, 16, 2)) . "." . hex(substr($msg->{payload}, 18, 2));
-      readingsBulkUpdate($hash, 'BL_VERSION', $blVersion);
-      readingsEndUpdate($hash, 1);
-      if ((AttrVal($name, "autoUpdate", 0) == 1) && ($blVersion eq "3.0" or $blType eq "Optiboot" or $blType eq "MYSBootloader")) {
-        flashFirmware($hash, $fwType);
-      }      
-    } else {
-      Log3($name, 2, "$name: Failed to parse ST_FIRMWARE_CONFIG_REQUEST - expected payload length 32 but retrieved ".length($msg->{payload}));
-    }
-	last;
-  }
-  $type == ST_FIRMWARE_REQUEST and do {
-    if (length($msg->{payload}) == 12) {
-        my $type = hex2Short(substr($msg->{payload}, 0, 4));
-        my $version = hex2Short(substr($msg->{payload}, 4, 4));
-        my $block = hex2Short(substr($msg->{payload}, 8, 4));
-        Log3($name, 5, "$name: Firmware block request $block (type $type, version $version)");
-        my $fromIndex = $block * 16;
-        my $payload = $msg->{payload};
-        my @fwData = @{$hash->{FW_DATA}};
-        for (my $index = $fromIndex; $index < $fromIndex + 16; $index++) {
-          $payload = $payload . sprintf("%02X", $fwData[$index]);
-        }
-        sendClientMessage($hash, childId => 255, cmd => C_STREAM, subType => ST_FIRMWARE_RESPONSE, payload => $payload);               
-    } else {
-      Log3($name, 2, "$name: Failed to parse ST_FIRMWARE_REQUEST - expected payload length 12 but retrieved ".length($msg->{payload}));
-    }
-	last;
-  }
+	my ($hash, $msg) = @_;
+	my $name = $hash->{NAME};
+	my $type = $msg->{subType};
+	my $typeStr = datastreamTypeToStr($type);
+
+	TYPE_HANDLER: {
+		$type == ST_FIRMWARE_CONFIG_REQUEST and do {
+			if (length($msg->{payload}) == 20) {
+				readingsBeginUpdate($hash);
+				my $fwType = hex2Short(substr($msg->{payload}, 0, 4));
+				readingsBulkUpdate($hash, 'FW_TYPE', $fwType);
+				readingsBulkUpdate($hash, 'FW_VERSION', hex2Short(substr($msg->{payload}, 4, 4)));
+				readingsBulkUpdate($hash, 'FW_BLOCKS', hex2Short(substr($msg->{payload}, 8, 4)));
+				readingsBulkUpdate($hash, 'FW_CRC', hex2Short(substr($msg->{payload}, 12, 4)));
+				my $blVersion = hex(substr($msg->{payload}, 16, 2)) . "." . hex(substr($msg->{payload}, 18, 2));
+				readingsBulkUpdate($hash, 'BL_VERSION', $blVersion);
+				readingsEndUpdate($hash, 1);
+				Log3($name, 4, "$name: received ST_FIRMWARE_CONFIG_REQUEST");
+				if ((AttrVal($name, "autoUpdate", 0) == 1) && ($blVersion eq "3.0" or $blType eq "Optiboot" or $blType eq "MYSBootloader")) {
+					Log3($name, 4, "$name: Bootloader matches, calling firmware update procedure");
+					flashFirmware($hash, $fwType);
+				}
+			} else {
+				Log3($name, 2, "$name: Failed to parse ST_FIRMWARE_CONFIG_REQUEST - expected payload length 32 but retrieved ".length($msg->{payload}));
+			}
+			last;
+		}
+		$type == ST_FIRMWARE_REQUEST and do {
+			if (length($msg->{payload}) == 12) {
+				my $type = hex2Short(substr($msg->{payload}, 0, 4));
+				my $version = hex2Short(substr($msg->{payload}, 4, 4));
+				my $block = hex2Short(substr($msg->{payload}, 8, 4));
+				Log3($name, 5, "$name: Firmware block request $block (type $type, version $version)");
+				my $fromIndex = $block * 16;
+				my $payload = $msg->{payload};
+				my @fwData = @{$hash->{FW_DATA}};
+				for (my $index = $fromIndex; $index < $fromIndex + 16; $index++) {
+					$payload = $payload . sprintf("%02X", $fwData[$index]);
+				}
+				sendClientMessage($hash, childId => 255, cmd => C_STREAM, subType => ST_FIRMWARE_RESPONSE, payload => $payload);
+			} else {
+				Log3($name, 2, "$name: Failed to parse ST_FIRMWARE_REQUEST - expected payload length 12 but retrieved ".length($msg->{payload}));
+			}
+			last;
+		}
+	}
 }
 
 sub Attr($$$$) {
@@ -533,32 +529,32 @@ sub Attr($$$$) {
       last;
     };
     $attribute eq "requestAck" and do {
-      if ($command eq "set") {
-        $hash->{ack} = 1;
-      } else {
-        $hash->{ack} = 0;
-      }
-      last;
+		if ($command eq "set") {
+			$hash->{ack} = 1;
+		} else {
+			$hash->{ack} = 0;
+		}
+		last;
     };
     $attribute eq "timeoutAck" and do {
-      if ($command eq "set") {
-        $hash->{timeoutAck} = $value;
-      } else {
-    $hash->{timeoutAck} = 0;
-      }
-      last;
+		if ($command eq "set") {
+			$hash->{timeoutAck} = $value;
+		} else {
+			$hash->{timeoutAck} = 0;
+		}
+		last;
     };
     $attribute eq "timeoutAlive" and do {
-      if ($command eq "set" and $value) {
-    $hash->{timeoutAlive} = $value;
-        refreshInternalMySTimer($hash,"Alive");
-      } else {
-    $hash->{timeoutAlive} = 0;
-      }
-      last;
+		if ($command eq "set" and $value) {
+			$hash->{timeoutAlive} = $value;
+			refreshInternalMySTimer($hash,"Alive");
+		} else {
+			$hash->{timeoutAlive} = 0;
+		}
+		last;
     };
     $attribute eq "autoUpdate" and do {
-      last;
+		last;
     };
   }
 }
@@ -797,24 +793,24 @@ sub onInternalMessage($$) {
 			}
 			undef $hash->{I_DEBUG};
 			last;
-		}; 
+		};
 		$type == I_SIGNAL_REPORT_REVERSE and do {
 			#$hash->{$typeStr} = $msg->{payload};
 			readingsSingleUpdate($hash, "rssi_DEVICE", $msg->{payload}, 1) if ($msg->{payload} ne "-256" );
 			last;
-		}; 
+		};
 		$type == I_SIGNAL_REPORT_RESPONSE and do {
 			#$hash->{$typeStr} = $msg->{payload};
 			readingsSingleUpdate($hash, "rssi_at_IODev", $msg->{payload}, 1) if ($msg->{payload} ne "-256" );
 			last;
-		}; 
+		};
 		$type == I_PRE_SLEEP_NOTIFICATION and do {
 			#$hash->{$typeStr} = $msg->{payload};
 			readingsSingleUpdate($hash,"state","asleep",1) unless ($hash->{STATE} eq "NACK");
 			readingsSingleUpdate($hash, "nowSleeping", "1", 0);
 			refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
 			last;
-		}; 
+		};
 		$type == I_POST_SLEEP_NOTIFICATION and do {
 			#$hash->{$typeStr} = $msg->{payload};
 			readingsSingleUpdate($hash,"state","awake",1) unless ($hash->{STATE} eq "NACK");
@@ -838,7 +834,7 @@ sub sendClientMessage($%) {
 	$msg{ack} = $hash->{ack} unless defined $msg{ack};
 	unless ($hash->{nowSleeping}) {
 		sendMessage($hash->{IODev},%msg);
-		refreshInternalMySTimer($hash,"Ack") if (($hash->{ack} or $hash->{IODev}->{ack}) and $hash->{timeoutAck}); 
+		refreshInternalMySTimer($hash,"Ack") if (($hash->{ack} or $hash->{IODev}->{ack}) and $hash->{timeoutAck});
 	} else {
 		#write to queue if node is asleep
 		my $retainedMessagesForRadioId = $hash->{retainedMessagesForRadioId}->{$msg{radioId}};
@@ -906,7 +902,7 @@ sub flashFirmware($$) {
 		Log3 ($name,3,"No firmware defined for type $fwType - not flashing!");
 		return "No firmware defined for type " . $fwType ;
 	}
-	my ($err, @lines) = FileRead({FileName => "./FHEM/firmware/" . $filename, ForceType => "file"}); 
+	my ($err, @lines) = FileRead({FileName => "./FHEM/firmware/" . $filename, ForceType => "file"});
 	if (defined($err) && $err) {
 		Log3 ($name,3,"Could not read firmware file - $err: not flashing!");
 		return "Could not read firmware file - $err";
@@ -1044,13 +1040,13 @@ sub timeoutMySTimer($) {
             <li>
                 <p><code>set &lt;name&gt; flash</code><br/>
                 Checks whether a newer firmware version is available. If a newer firmware version is
-                available the flash procedure is started. The sensor node must support FOTA for 
+                available the flash procedure is started. The sensor node must support FOTA for
                 this.</p>
             </li>
             <li>
       <p><code>set &lt;name&gt; fwType &lt;value&gt;</code><br/>
          assigns a firmware type to this node (must be a numeric value in the range 0 .. 65536).
-         Should be contained in the <a href="#MYSENSORSattrfirmwareConfig">FOTA configuration 
+         Should be contained in the <a href="#MYSENSORSattrfirmwareConfig">FOTA configuration
          file</a>.</p>
 	<li>
 	    <p><code>set &lt;name&gt; time</code><br/>sets time for nodes (that support it)</p>
@@ -1079,7 +1075,7 @@ sub timeoutMySTimer($) {
 	</li>
 	<li>
                         <p><code>attr &lt;name&gt; autoUpdate [&lt;0|1&gt;]</code><br/>
-                        specifies whether an automatic update of the sensor node should be performed (1) during startup of the 
+                        specifies whether an automatic update of the sensor node should be performed (1) during startup of the
                         node or not (0). Defaults to 0</p>
                 </li>
 	<li>
