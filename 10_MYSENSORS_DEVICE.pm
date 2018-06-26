@@ -422,6 +422,14 @@ sub onStreamMessage($$) {
 			}
 			last;
 		}
+		$type == ST_SOUND and do {
+			#no clue what do do...
+			last;
+		}	
+		$type == ST_IMAGE and do {
+			#no clue what do do...
+			last;
+		}
 	}
 }
 
