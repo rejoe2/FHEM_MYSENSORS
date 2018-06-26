@@ -52,7 +52,9 @@ sub MYSENSORS_DEVICE_Initialize($) {
     "IODev " .
     "showtime:0,1 " .
     "autoUpdate:0,1 " .
-    $main::readingFnAttributes;
+	"BL_Type:Optiboot,MYSBootloader " .
+	#"IODevForUpdates " .
+	$main::readingFnAttributes;
 
   main::LoadModule("MYSENSORS");
 }
@@ -272,15 +274,21 @@ sub Set($@) {
     };
     $command eq "flash" and do {
       my $blVersion = ReadingsVal($name, "BL_VERSION", "");
-      if ($blVersion eq "3.0") {
-        my $fwType = ReadingsNum($name, "FW_TYPE", -1);
-        if ($fwType != -1) {
-          return flashFirmware($hash, $fwType);
-        } else {
-          return "$name: Firmware type not defined (FW_TYPE)";
-        }
+	  my $blType = AttrVal($name, "BL_Type", "");
+	  my $fwType = ReadingsNum($name, "FW_TYPE", -1);
+      if ($fwType == -1) {
+		Log3 ($name,3,"Firmware type not defined (FW_TYPE) for $name, update not started");
+		return "$name: Firmware type not defined (FW_TYPE)";
+	  } elsif ($blVersion eq "3.0" or $blType eq "Optiboot") {
+		Log3 ($name,4,"Startet flashing Firmware: Optiboot method");
+        return flashFirmware($hash, $fwType);
+      } elsif ($blType eq "MYSBootloader") {
+		  Log3 ($name,4,"Send reboot command to MYSBootloader node to start update");
+		  sendClientMessage($hash, childId => 255, cmd => C_INTERNAL, subType => I_REBOOT);		
+		  
       } else {
-        return "$name: Expected bootloader version 3.0 but found: $blVersion";
+		return "$name: No valid BL_Type specified" if ($blVersion eq "");
+        return "$name: Expected bootloader version 3.0 but found: $blVersion or specify a valid BL_Type";
       }
       last;
     };
@@ -289,11 +297,11 @@ sub Set($@) {
         my ($type) = @values;
         if ($type =~ /^[[:digit:]]$/) {
           readingsSingleUpdate($hash, 'FW_TYPE', $type, 1);
-          last;
         } else {
           return "fwType must be numeric";
         }
       }
+	  last;
     };
     (defined ($hash->{setcommands}->{$command})) and do {
       my $setcommand = $hash->{setcommands}->{$command};
@@ -373,7 +381,8 @@ sub onStreamMessage($$) {
   my $type = $msg->{subType};
   my $typeStr = datastreamTypeToStr($type);
   
-  if ($type == ST_FIRMWARE_CONFIG_REQUEST) {
+  COMMAND_HANDLER: {
+  $type == ST_FIRMWARE_CONFIG_REQUEST and do {
     if (length($msg->{payload}) == 20) {
       readingsBeginUpdate($hash);
       my $fwType = hex2Short(substr($msg->{payload}, 0, 4));
@@ -384,13 +393,15 @@ sub onStreamMessage($$) {
       my $blVersion = hex(substr($msg->{payload}, 16, 2)) . "." . hex(substr($msg->{payload}, 18, 2));
       readingsBulkUpdate($hash, 'BL_VERSION', $blVersion);
       readingsEndUpdate($hash, 1);
-      if ((AttrVal($name, "autoUpdate", 0) == 1) && ($blVersion eq "3.0")) {
+      if ((AttrVal($name, "autoUpdate", 0) == 1) && ($blVersion eq "3.0" or $blType eq "Optiboot" or $blType eq "MYSBootloader")) {
         flashFirmware($hash, $fwType);
       }      
     } else {
       Log3($name, 2, "$name: Failed to parse ST_FIRMWARE_CONFIG_REQUEST - expected payload length 32 but retrieved ".length($msg->{payload}));
     }
-  } elsif ($type == ST_FIRMWARE_REQUEST) {
+	last;
+  }
+  $type == ST_FIRMWARE_REQUEST and do {
     if (length($msg->{payload}) == 12) {
         my $type = hex2Short(substr($msg->{payload}, 0, 4));
         my $version = hex2Short(substr($msg->{payload}, 4, 4));
@@ -406,6 +417,7 @@ sub onStreamMessage($$) {
     } else {
       Log3($name, 2, "$name: Failed to parse ST_FIRMWARE_REQUEST - expected payload length 12 but retrieved ".length($msg->{payload}));
     }
+	last;
   }
 }
 
@@ -557,60 +569,58 @@ sub onGatewayStarted($) {
 }
 
 sub onPresentationMessage($$) {
-  my ($hash,$msg) = @_;
-  my $name = $hash->{NAME};
-  my $nodeType = $msg->{subType};
-  my $id = $msg->{childId};
-  if ($id == 255) { #special id
-    NODETYPE: {
-      $nodeType == S_ARDUINO_NODE and do {
-        CommandAttr(undef, "$name mode node");
-        last;
-      };
-      $nodeType == S_ARDUINO_REPEATER_NODE and do {
-        CommandAttr(undef, "$name mode repeater");
-        last;
-      };
-    };
+	my ($hash,$msg) = @_;
+	my $name = $hash->{NAME};
+	my $nodeType = $msg->{subType};
+	my $id = $msg->{childId};
+	if ($id == 255) { #special id
+		NODETYPE: {
+			$nodeType == S_ARDUINO_NODE and do {
+				CommandAttr(undef, "$name mode node");
+				last;
+			};
+			$nodeType == S_ARDUINO_REPEATER_NODE and do {
+				CommandAttr(undef, "$name mode repeater");
+				last;
+			};
+		};
     CommandAttr(undef, "$name version $msg->{payload}");
-  };
+	};
 
-  my $readingMappings = $hash->{readingMappings};
-  my $typeMappings = $hash->{typeMappings};
-  if (my $sensorMappings = $hash->{sensorMappings}->{$nodeType}) {
-    my $idStr = ($id > 0 ? $id : "");
-    my @ret = ();
-    foreach my $type (@{$sensorMappings->{sends}}) {
-      next if (defined $readingMappings->{$id}->{$type});
-      my $typeStr = $typeMappings->{$type}->{type};
-      if ($hash->{IODev}->{'inclusion-mode'}) {
-        if (my $ret = CommandAttr(undef,"$name mapReading_$typeStr$idStr $id $typeStr")) {
-          push @ret,$ret;
-        }
-      } else {
-        push @ret,"no mapReading for $id, $typeStr";
-      }
-    }
-    foreach my $type (@{$sensorMappings->{receives}}) {
-      my $typeMapping = $typeMappings->{$type};
-      my $typeStr = $typeMapping->{type};
-      next if (defined $hash->{sets}->{"$typeStr$idStr"});
-      if ($hash->{IODev}->{'inclusion-mode'}) {
-        my @values = ();
-        if ($typeMapping->{range}) {
-          @values = ('slider',$typeMapping->{range}->{min},$typeMapping->{range}->{step},$typeMapping->{range}->{max});
-        } elsif ($typeMapping->{val}) {
-          @values = values %{$typeMapping->{val}};
-        }
-        if (my $ret = CommandAttr(undef,"$name setReading_$typeStr$idStr".(@values ? " ".join (",",@values) : ""))) {
-          push @ret,$ret;
-        }
-      } else {
-        push @ret,"no setReading for $id, $typeStr";
-      }
-    }
-    Log3 ($hash->{NAME}, 4, "MYSENSORS_DEVICE $hash->{NAME}: errors on C_PRESENTATION-message for childId $id, subType ".sensorTypeToStr($nodeType)." ".join (", ",@ret)) if @ret;
-  }
+	my $readingMappings = $hash->{readingMappings};
+	my $typeMappings = $hash->{typeMappings};
+	if (my $sensorMappings = $hash->{sensorMappings}->{$nodeType}) {
+		my $idStr = ($id > 0 ? $id : "");
+		my @ret = ();
+		foreach my $type (@{$sensorMappings->{sends}}) {
+			next if (defined $readingMappings->{$id}->{$type});
+			my $typeStr = $typeMappings->{$type}->{type};
+			if ($hash->{IODev}->{'inclusion-mode'}) {
+				push @ret,$ret if (my $ret = CommandAttr(undef,"$name mapReading_$typeStr$idStr $id $typeStr"));
+			} else {
+				push @ret,"no mapReading for $id, $typeStr";
+			}
+		}
+		foreach my $type (@{$sensorMappings->{receives}}) {
+			my $typeMapping = $typeMappings->{$type};
+			my $typeStr = $typeMapping->{type};
+			next if (defined $hash->{sets}->{"$typeStr$idStr"});
+			if ($hash->{IODev}->{'inclusion-mode'}) {
+				my @values = ();
+				if ($typeMapping->{range}) {
+					@values = ('slider',$typeMapping->{range}->{min},$typeMapping->{range}->{step},$typeMapping->{range}->{max});
+				} elsif ($typeMapping->{val}) {
+					@values = values %{$typeMapping->{val}};
+				}
+				if (my $ret = CommandAttr(undef,"$name setReading_$typeStr$idStr".(@values ? " ".join (",",@values) : ""))) {
+					push @ret,$ret;
+				}
+			} else {
+				push @ret,"no setReading for $id, $typeStr";
+			}
+		}
+		Log3 ($hash->{NAME}, 4, "MYSENSORS_DEVICE $hash->{NAME}: errors on C_PRESENTATION-message for childId $id, subType ".sensorTypeToStr($nodeType)." ".join (", ",@ret)) if @ret;
+	}
 }
 
 sub onSetMessage($$) {
@@ -684,11 +694,11 @@ sub onInternalMessage($$) {
 		};
 		$type == I_CONFIG and do {
 			if ($msg->{ack}) {
-			Log3 ($name, 4, "MYSENSORS_DEVICE $name: response to config-request acknowledged");
+				Log3 ($name, 4, "MYSENSORS_DEVICE $name: response to config-request acknowledged");
 			} else {
-			readingsSingleUpdate($hash, "parentId", $msg->{payload}, 1);
-			sendClientMessage($hash,cmd => C_INTERNAL, childId => 255, subType => I_CONFIG, payload => AttrVal($name,"config","M"));
-			Log3 ($name, 4, "MYSENSORS_DEVICE $name: respond to config-request, node parentId = " . $msg->{payload});
+				readingsSingleUpdate($hash, "parentId", $msg->{payload}, 1);
+				sendClientMessage($hash,cmd => C_INTERNAL, childId => 255, subType => I_CONFIG, payload => AttrVal($name,"config","M"));
+				Log3 ($name, 4, "MYSENSORS_DEVICE $name: respond to config-request, node parentId = " . $msg->{payload});
 			}
 			last;
 		};
@@ -728,15 +738,15 @@ sub onInternalMessage($$) {
 			last;
 		};
 		$type == I_REQUEST_SIGNING and do {
-			$hash->{$typeStr} = $msg->{payload};
+			#$hash->{$typeStr} = $msg->{payload};
 			last;
 		};
 		$type == I_GET_NONCE and do {
-			$hash->{$typeStr} = $msg->{payload};
+			#$hash->{$typeStr} = $msg->{payload};
 			last;
 		};
 		$type == I_GET_NONCE_RESPONSE and do {
-			$hash->{$typeStr} = $msg->{payload};
+			#$hash->{$typeStr} = $msg->{payload};
 			last;
 		};
 		$type == I_HEARTBEAT_REQUEST and do {
@@ -800,14 +810,14 @@ sub onInternalMessage($$) {
 		}; 
 		$type == I_PRE_SLEEP_NOTIFICATION and do {
 			#$hash->{$typeStr} = $msg->{payload};
-			readingsSingleUpdate($hash,"state","sleeping",1) unless ($hash->{STATE} eq "NACK");
+			readingsSingleUpdate($hash,"state","asleep",1) unless ($hash->{STATE} eq "NACK");
 			readingsSingleUpdate($hash, "nowSleeping", "1", 0);
 			refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
 			last;
 		}; 
 		$type == I_POST_SLEEP_NOTIFICATION and do {
 			#$hash->{$typeStr} = $msg->{payload};
-			readingsSingleUpdate($hash,"state","awoken",1) unless ($hash->{STATE} eq "NACK");
+			readingsSingleUpdate($hash,"state","awake",1) unless ($hash->{STATE} eq "NACK");
 			readingsSingleUpdate($hash, "nowSleeping", "0", 0);
 			refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
 			#here we can send out retained and outstanding messages
@@ -892,9 +902,13 @@ sub flashFirmware($$) {
 	my ($hash, $fwType) = @_;
 	my $name = $hash->{NAME};
 	my ($version, $filename, $firmwarename) = getLatestFirmware($hash->{IODev}, $fwType);
-	return "No firmware defined for type " . $fwType if (not defined $filename);
+	if (not defined $filename) {
+		Log3 ($name,3,"No firmware defined for type $fwType - not flashing!");
+		return "No firmware defined for type " . $fwType ;
+	}
 	my ($err, @lines) = FileRead({FileName => "./FHEM/firmware/" . $filename, ForceType => "file"}); 
 	if (defined($err) && $err) {
+		Log3 ($name,3,"Could not read firmware file - $err: not flashing!");
 		return "Could not read firmware file - $err";
 	} else {
 		my $start = 0;
@@ -910,11 +924,17 @@ sub flashFirmware($$) {
 				my $data = substr($row, 8, 2 * $reclen);
 				if ($rectype == 0) {
 					if (($start == 0) && ($end == 0)) {
-						return "error loading hex file - offset can't be devided by 128" if ($offset % 128 > 0);
+						if ($offset % 128 > 0) {
+							Log3 ($name,3,"error loading hex file - offset can't be devided by 128");
+							return "error loading hex file - offset can't be devided by 128" ;
+						}
 						$start = $offset;
 						$end = $offset;
 					}
-					return "error loading hex file - offset lower than end" if ($offset < $end);
+					if ($offset < $end) {
+						Log3 ($name,3,"error loading hex file - offset can't be devided by 128");
+						return "error loading hex file - offset lower than end" ;
+					}
 					while ($offset > $end) {
 						push(@fwdata, 255);
 						$end++;
@@ -1072,10 +1092,13 @@ sub timeoutMySTimer($) {
 	    <p><code>attr &lt;name&gt; mapReading_&lt;reading&gt; &lt;childId&gt; &lt;readingtype&gt; [&lt;value&gt;:&lt;mappedvalue&gt;]*</code><br/>configures the reading-name for a given childId and sensortype<br/>e.g.: <code>attr xxx mapReading_aussentemperatur 123 temperature</code></p>
 	</li>
 	<li>
-	    <p><code>att &lt;name&gt; requestAck</code><br/>request acknowledge from nodes.<br/>if set the Readings of nodes are updated not before requested acknowledge is received<br/>if not set the Readings of nodes are updated immediatly (not awaiting the acknowledge).<br/>May also be configured on the gateway for all nodes at once</p>
+	    <p><code>attr &lt;name&gt; requestAck</code><br/>request acknowledge from nodes.<br/>if set the Readings of nodes are updated not before requested acknowledge is received<br/>if not set the Readings of nodes are updated immediatly (not awaiting the acknowledge).<br/>May also be configured on the gateway for all nodes at once</p>
 	</li>
 	<li>
 	    <p><code>attr &lt;name&gt; mapReadingType_&lt;reading&gt; &lt;new reading name&gt; [&lt;value&gt;:&lt;mappedvalue&gt;]*</code><br/>configures reading type names that should be used instead of technical names<br/>e.g.: <code>attr xxx mapReadingType_LIGHT switch 0:on 1:off</code>to be used for mysensor Variabletypes that have no predefined defaults (yet)</p>
+	</li>
+	<li>
+	    <p><code>attr &lt;name&gt; BL_Type &lt;either Optiboot or MYSBootloader&gt;*</code><br/>For other bootloaders than Optiboot V3.0 OTA updates will only work if bootloader type is specified - MYSBootloader will reboot node if firmware update is started, so make sure, node will really recover</p>
 	</li>
 	<li>
 	    <p><code>attr &lt;name&gt; timeoutAck &lt;time in seconds&gt;*</code><br/>configures timeout to set device state to NACK in case not all requested acks are received</p>
