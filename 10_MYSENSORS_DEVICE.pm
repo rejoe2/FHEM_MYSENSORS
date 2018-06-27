@@ -53,7 +53,7 @@ sub MYSENSORS_DEVICE_Initialize($) {
     "showtime:0,1 " .
     "autoUpdate:0,1 " .
     "BL_Type:Optiboot,MYSBootloader " .
-    #"IODevForUpdates " .
+    "IODevForUpdates " .
     $main::readingFnAttributes;
 
   main::LoadModule("MYSENSORS");
@@ -415,7 +415,11 @@ sub onStreamMessage($$) {
 		for (my $index = $fromIndex; $index < $fromIndex + 16; $index++) {
 		    $payload = $payload . sprintf("%02X", $fwData[$index]);
 		}
-		sendClientMessage($hash, childId => 255, cmd => C_STREAM, subType => ST_FIRMWARE_RESPONSE, payload => $payload);
+		if (defined $hash->{IODevForUpdates}) {
+                    sendMessage($hash->{IODevForUpdates}, radioId => $hash->{radioId}, childId => 255, cmd => C_STREAM, subType => ST_FIRMWARE_RESPONSE, payload => $payload);
+                } else {
+                    sendClientMessage($hash, childId => 255, cmd => C_STREAM, subType => ST_FIRMWARE_RESPONSE, payload => $payload);
+		}
 		readingsSingleUpdate($hash, "state", "updating", 1) unless ($hash->{STATE} eq "updating");
 	    } else {
 		Log3($name, 2, "$name: Failed to parse ST_FIRMWARE_REQUEST - expected payload length 12 but retrieved ".length($msg->{payload}));
@@ -985,7 +989,11 @@ sub flashFirmware($$) {
 	    Log3($name, 4, "$name: Flashing './FHEM/firmware/" . $filename . "'");
 	    $hash->{FW_DATA} = \@fwdata;
 	    my $payload = short2Hex($fwType) . short2Hex($version) . short2Hex($blocks) . short2Hex($crc);
-	    sendClientMessage($hash, childId => 255, cmd => C_STREAM, subType => ST_FIRMWARE_CONFIG_RESPONSE, payload => $payload);
+	    if (defined $hash->{IODevForUpdates}) {
+                sendMessage($hash->{IODevForUpdates}, radioId => $hash->{radioId}, childId => 255, cmd => C_STREAM, subType => ST_FIRMWARE_CONFIG_RESPONSE, payload => $payload);
+            } else {
+                sendClientMessage($hash, childId => 255, cmd => C_STREAM, subType => ST_FIRMWARE_CONFIG_RESPONSE, payload => $payload);
+	    }
 	    return undef;
 	} else {
 	    return "Nothing todo - latest firmware already installed";
