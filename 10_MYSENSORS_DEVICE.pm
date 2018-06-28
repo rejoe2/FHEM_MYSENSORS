@@ -51,9 +51,9 @@ sub MYSENSORS_DEVICE_Initialize($) {
     "timeoutAlive " .
     "IODev " .
     "showtime:0,1 " .
-    "autoUpdate:0,1 " .
-    "BL_Type:Optiboot,MYSBootloader " .
-    "IODevForUpdates " .
+    "OTA_autoUpdate:0,1 " .
+    "OTA_BL_Type:Optiboot,MYSBootloader " .
+    "OTA_Chan76_IODev " .
     $main::readingFnAttributes;
 
   main::LoadModule("MYSENSORS");
@@ -258,7 +258,8 @@ sub Set($@) {
 	    last;
 	};
 	$command eq "reboot" and do {
-	    sendClientMessage($hash, childId => 255, cmd => C_INTERNAL, subType => I_REBOOT);
+	    my $blVersion = ReadingsVal($name, "BL_VERSION", "");
+		sendClientMessage($hash, childId => 255, cmd => C_INTERNAL, subType => I_REBOOT) if (defined OTA_BL_Type or $blVersion eq "3.0");
 	    last;
 	};
 	$command eq "clear" and do {
@@ -268,7 +269,7 @@ sub Set($@) {
 	};
 	$command eq "flash" and do {
 	    my $blVersion = ReadingsVal($name, "BL_VERSION", "");
-	    my $blType = AttrVal($name, "BL_Type", "");
+	    my $blType = AttrVal($name, "OTA_BL_Type", "");
 	    my $fwType = ReadingsNum($name, "FW_TYPE", -1);
 	    if ($fwType == -1) {
 		Log3 ($name,3,"Firmware type not defined (FW_TYPE) for $name, update not started");
@@ -283,8 +284,8 @@ sub Set($@) {
 		Log3 ($name,4,"Send reboot command to MYSBootloader node to start update");
 		sendClientMessage($hash, childId => 255, cmd => C_INTERNAL, subType => I_REBOOT);
 	    } else {
-		return "$name: No valid BL_Type specified" if ($blVersion eq "");
-		return "$name: Expected bootloader version 3.0 but found: $blVersion or specify a valid BL_Type";
+		return "$name: No valid OTA_BL_Type specified" if ($blVersion eq "");
+		return "$name: Expected bootloader version 3.0 but found: $blVersion or specify a valid OTA_BL_Type";
 	    }
 	    last;
 	};
@@ -376,7 +377,7 @@ sub onStreamMessage($$) {
     my $name = $hash->{NAME};
     my $type = $msg->{subType};
     my $typeStr = datastreamTypeToStr($type);
-    my $blType = AttrVal($name, "BL_Type", "");
+    my $blType = AttrVal($name, "OTA_BL_Type", "");
     my $blVersion = hex(substr($msg->{payload}, 16, 2)) . "." . hex(substr($msg->{payload}, 18, 2));
     my $fwType = hex2Short(substr($msg->{payload}, 0, 4));
 
@@ -391,8 +392,8 @@ sub onStreamMessage($$) {
 		readingsBulkUpdate($hash, 'BL_VERSION', $blVersion);
 		readingsEndUpdate($hash, 1);
 		Log3($name, 4, "$name: received ST_FIRMWARE_CONFIG_REQUEST");
-		if ((AttrVal($name, "autoUpdate", 0) == 1) && ($blVersion eq "3.0" or $blType eq "Optiboot")) {
-		    Log3($name, 4, "$name: Optiboot BL, Node set to autoUpdate => calling firmware update procedure");
+		if ((AttrVal($name, "OTA_autoUpdate", 0) == 1) && ($blVersion eq "3.0" or $blType eq "Optiboot")) {
+		    Log3($name, 4, "$name: Optiboot BL, Node set to OTA_autoUpdate => calling firmware update procedure");
 		    flashFirmware($hash, $fwType);
 		} elsif ($blType eq "MYSBootloader" and $hash->{flashProcedureStatus}) {
 		    Log3($name, 4, "$name: MYSBootloader asking for firmware update, calling firmware update procedure");
@@ -415,8 +416,8 @@ sub onStreamMessage($$) {
 		for (my $index = $fromIndex; $index < $fromIndex + 16; $index++) {
 		    $payload = $payload . sprintf("%02X", $fwData[$index]);
 		}
-		if (defined $hash->{IODevForUpdates}) {
-                    sendMessage($hash->{IODevForUpdates}, radioId => $hash->{radioId}, childId => 255, cmd => C_STREAM, subType => ST_FIRMWARE_RESPONSE, payload => $payload);
+		if (defined $hash->{OTA_Chan76_IODev}) {
+                    sendMessage($hash->{OTA_Chan76_IODev}, radioId => $hash->{radioId}, childId => 255, cmd => C_STREAM, subType => ST_FIRMWARE_RESPONSE, payload => $payload);
                 } else {
                     sendClientMessage($hash, childId => 255, cmd => C_STREAM, subType => ST_FIRMWARE_RESPONSE, payload => $payload);
 		}
@@ -573,7 +574,7 @@ sub Attr($$$$) {
 	}
 	last;
     };
-    $attribute eq "autoUpdate" and do {
+    $attribute eq "OTA_autoUpdate" and do {
 	last;
     };
   }
@@ -989,8 +990,8 @@ sub flashFirmware($$) {
 	    Log3($name, 4, "$name: Flashing './FHEM/firmware/" . $filename . "'");
 	    $hash->{FW_DATA} = \@fwdata;
 	    my $payload = short2Hex($fwType) . short2Hex($version) . short2Hex($blocks) . short2Hex($crc);
-	    if (defined $hash->{IODevForUpdates}) {
-                sendMessage($hash->{IODevForUpdates}, radioId => $hash->{radioId}, childId => 255, cmd => C_STREAM, subType => ST_FIRMWARE_CONFIG_RESPONSE, payload => $payload);
+	    if (defined $hash->{OTA_Chan76_IODev}) {
+                sendMessage($hash->{OTA_Chan76_IODev}, radioId => $hash->{radioId}, childId => 255, cmd => C_STREAM, subType => ST_FIRMWARE_CONFIG_RESPONSE, payload => $payload);
             } else {
                 sendClientMessage($hash, childId => 255, cmd => C_STREAM, subType => ST_FIRMWARE_CONFIG_RESPONSE, payload => $payload);
 	    }
@@ -1076,7 +1077,7 @@ sub timeoutMySTimer($) {
             <li>
       <p><code>set &lt;name&gt; fwType &lt;value&gt;</code><br/>
          assigns a firmware type to this node (must be a numeric value in the range 0 .. 65536).
-         Should be contained in the <a href="#MYSENSORSattrfirmwareConfig">FOTA configuration
+         Should be contained in the <a href="#MYSENSORSattrOTA_firmwareConfig">FOTA configuration
          file</a>.</p>
     <li>
         <p><code>set &lt;name&gt; time</code><br/>sets time for nodes (that support it)</p>
@@ -1104,7 +1105,7 @@ sub timeoutMySTimer($) {
         <p><code>attr &lt;name&gt; config [&lt;M|I&gt;]</code><br/>configures metric (M) or inch (I). Defaults to 'M'</p>
     </li>
     <li>
-                        <p><code>attr &lt;name&gt; autoUpdate [&lt;0|1&gt;]</code><br/>
+                        <p><code>attr &lt;name&gt; OTA_autoUpdate [&lt;0|1&gt;]</code><br/>
                         specifies whether an automatic update of the sensor node should be performed (1) during startup of the
                         node or not (0). Defaults to 0</p>
                 </li>
@@ -1124,7 +1125,10 @@ sub timeoutMySTimer($) {
         <p><code>attr &lt;name&gt; mapReadingType_&lt;reading&gt; &lt;new reading name&gt; [&lt;value&gt;:&lt;mappedvalue&gt;]*</code><br/>configures reading type names that should be used instead of technical names<br/>e.g.: <code>attr xxx mapReadingType_LIGHT switch 0:on 1:off</code>to be used for mysensor Variabletypes that have no predefined defaults (yet)</p>
     </li>
     <li>
-        <p><code>attr &lt;name&gt; BL_Type &lt;either Optiboot or MYSBootloader&gt;*</code><br/>For other bootloaders than Optiboot V3.0 OTA updates will only work if bootloader type is specified - MYSBootloader will reboot node if firmware update is started, so make sure, node will really recover</p>
+        <p><code>attr &lt;name&gt; OTA_BL_Type &lt;either Optiboot or MYSBootloader&gt;*</code><br/>For other bootloaders than Optiboot V3.0 OTA updates will only work if bootloader type is specified - MYSBootloader will reboot node if firmware update is started, so make sure, node will really recover</p>
+    </li>
+	<li>
+        <p><code>attr &lt;name&gt; OTA_Chan76_IODev </code><br/>As MYSBootloader per default uses nRF24 channel 76, you may specify a different IODev for OTA data using channel 76</p>
     </li>
     <li>
         <p><code>attr &lt;name&gt; timeoutAck &lt;time in seconds&gt;*</code><br/>configures timeout to set device state to NACK in case not all requested acks are received</p>
