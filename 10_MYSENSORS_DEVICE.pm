@@ -220,11 +220,11 @@ sub Define($$) {
     return "requires 1 parameters" unless (defined $radioId and $radioId ne "");
     $hash->{radioId} = $radioId;
     $hash->{sets} = {
-	'time' => "noArg",
-	'reboot' => "noArg",
-	'clear' => "noArg",
-	'flash'  => "noArg",
-	'fwType' => "",
+    'time' => "noArg",
+    'reboot' => "noArg",
+    'clear' => "noArg",
+    'flash'  => "noArg",
+    'fwType' => "",
     };
 
     $hash->{ack} = 0;
@@ -246,82 +246,82 @@ sub Set($@) {
     my ($hash,$name,$command,@values) = @_;
     return "Need at least one parameters" unless defined $command;
     if(!defined($hash->{sets}->{$command})) {
-	$hash->{sets}->{fwType} = join(",", getFirmwareTypes($hash->{IODev}));
-	my $list = join(" ", map {$hash->{sets}->{$_} ne "" ? "$_:$hash->{sets}->{$_}" : $_} sort keys %{$hash->{sets}});
-	$hash->{sets}->{fwType} = "";
-	return grep (/(^on$)|(^off$)/,keys %{$hash->{sets}}) == 2 ? SetExtensions($hash, $list, $name, $command, @values) : "Unknown argument $command, choose one of $list";
+    $hash->{sets}->{fwType} = join(",", getFirmwareTypes($hash->{IODev}));
+    my $list = join(" ", map {$hash->{sets}->{$_} ne "" ? "$_:$hash->{sets}->{$_}" : $_} sort keys %{$hash->{sets}});
+    $hash->{sets}->{fwType} = "";
+    return grep (/(^on$)|(^off$)/,keys %{$hash->{sets}}) == 2 ? SetExtensions($hash, $list, $name, $command, @values) : "Unknown argument $command, choose one of $list";
     }
     
     COMMAND_HANDLER: {
-	$command eq "time" and do {
-	    sendClientMessage($hash, childId => 255, cmd => C_INTERNAL, subType => I_TIME, payload => time);
-	    last;
-	};
-	$command eq "reboot" and do {
-	    my $blVersion = ReadingsVal($name, "BL_VERSION", "");
-		sendClientMessage($hash, childId => 255, cmd => C_INTERNAL, subType => I_REBOOT) if (defined OTA_BL_Type or $blVersion eq "3.0");
-	    last;
-	};
-	$command eq "clear" and do {
-	    sendClientMessage($hash, childId => 255, cmd => C_INTERNAL, subType => I_DEBUG, payload => "E");
-	    Log3 ($name,3,"MYSENSORS_DEVICE $name: clear");
-	    last;
-	};
-	$command eq "flash" and do {
-	    my $blVersion = ReadingsVal($name, "BL_VERSION", "");
-	    my $blType = AttrVal($name, "OTA_BL_Type", "");
-	    my $fwType = ReadingsNum($name, "FW_TYPE", -1);
-	    if ($fwType == -1) {
-		Log3 ($name,3,"Firmware type not defined (FW_TYPE) for $name, update not started");
-		return "$name: Firmware type not defined (FW_TYPE)";
-	    } elsif ($blVersion eq "3.0" or $blType eq "Optiboot") {
-		Log3 ($name,4,"Startet flashing Firmware: Optiboot method");
-		return flashFirmware($hash, $fwType);
-	    } elsif ($blType eq "MYSBootloader") {
-		$hash->{flashProcedureStatus} = 1;
-		#also add option to change IO during update (allows other channels than 76 for regular GW)?
-		#if alternative IO attr exists: store regular IODev in a reading, and resore that after update or if there's no communication to the node for too a longer periode
-		Log3 ($name,4,"Send reboot command to MYSBootloader node to start update");
-		sendClientMessage($hash, childId => 255, cmd => C_INTERNAL, subType => I_REBOOT);
-	    } else {
-		return "$name: No valid OTA_BL_Type specified" if ($blVersion eq "");
-		return "$name: Expected bootloader version 3.0 but found: $blVersion or specify a valid OTA_BL_Type";
-	    }
-	    last;
-	};
-	$command eq "fwType" and do {
-	    if (@values == 1) {
-		my ($type) = @values;
-		if ($type =~ /^[[:digit:]]$/) {
-		    readingsSingleUpdate($hash, 'FW_TYPE', $type, 1);
-		} else {
-		    return "fwType must be numeric";
-		}
-	    }
-	    last;
-	};
-	(defined ($hash->{setcommands}->{$command})) and do {
-	    my $setcommand = $hash->{setcommands}->{$command};
-	    eval {
-		my ($type,$childId,$mappedValue) = mappedReadingToRaw($hash,$setcommand->{var},$setcommand->{val});
-		sendClientMessage($hash,
-		    childId => $childId,
-		    cmd => C_SET,
-		    subType => $type,
-		    payload => $mappedValue,
-		);
-		readingsSingleUpdate($hash,$setcommand->{var},$setcommand->{val},1) unless ($hash->{ack} or $hash->{IODev}->{ack});
-	    };
-	    return "$command not defined: ".GP_Catch($@) if $@;
-	    last;
-	};
-	my $value = @values ? join " ",@values : "";
-	eval {
-	    my ($type,$childId,$mappedValue) = mappedReadingToRaw($hash,$command,$value);
-	    sendClientMessage($hash, childId => $childId, cmd => C_SET, subType => $type, payload => $mappedValue);
-	    readingsSingleUpdate($hash,$command,$value,1) unless ($hash->{ack} or $hash->{IODev}->{ack});
-	};
-	return "$command not defined: ".GP_Catch($@) if $@;
+    $command eq "time" and do {
+        sendClientMessage($hash, childId => 255, cmd => C_INTERNAL, subType => I_TIME, payload => time);
+        last;
+    };
+    $command eq "reboot" and do {
+        my $blVersion = ReadingsVal($name, "BL_VERSION", "");
+	sendClientMessage($hash, childId => 255, cmd => C_INTERNAL, subType => I_REBOOT) if (defined($hash->{OTA_BL_Type}) or $blVersion eq "3.0");
+        last;
+    };
+    $command eq "clear" and do {
+        sendClientMessage($hash, childId => 255, cmd => C_INTERNAL, subType => I_DEBUG, payload => "E");
+        Log3 ($name,3,"MYSENSORS_DEVICE $name: clear");
+        last;
+    };
+    $command eq "flash" and do {
+        my $blVersion = ReadingsVal($name, "BL_VERSION", "");
+        my $blType = AttrVal($name, "OTA_BL_Type", "");
+        my $fwType = ReadingsNum($name, "FW_TYPE", -1);
+        if ($fwType == -1) {
+	Log3 ($name,3,"Firmware type not defined (FW_TYPE) for $name, update not started");
+	return "$name: Firmware type not defined (FW_TYPE)";
+        } elsif ($blVersion eq "3.0" or $blType eq "Optiboot") {
+	Log3 ($name,4,"Startet flashing Firmware: Optiboot method");
+	return flashFirmware($hash, $fwType);
+        } elsif ($blType eq "MYSBootloader") {
+	$hash->{flashProcedureStatus} = 1;
+	#also add option to change IO during update (allows other channels than 76 for regular GW)?
+	#if alternative IO attr exists: store regular IODev in a reading, and resore that after update or if there's no communication to the node for too a longer periode
+	Log3 ($name,4,"Send reboot command to MYSBootloader node to start update");
+	sendClientMessage($hash, childId => 255, cmd => C_INTERNAL, subType => I_REBOOT);
+        } else {
+	return "$name: No valid OTA_BL_Type specified" if ($blVersion eq "");
+	return "$name: Expected bootloader version 3.0 but found: $blVersion or specify a valid OTA_BL_Type";
+        }
+        last;
+    };
+    $command eq "fwType" and do {
+        if (@values == 1) {
+	my ($type) = @values;
+	if ($type =~ /^[[:digit:]]$/) {
+	    readingsSingleUpdate($hash, 'FW_TYPE', $type, 1);
+	} else {
+	    return "fwType must be numeric";
+	}
+        }
+        last;
+    };
+    (defined ($hash->{setcommands}->{$command})) and do {
+        my $setcommand = $hash->{setcommands}->{$command};
+        eval {
+	my ($type,$childId,$mappedValue) = mappedReadingToRaw($hash,$setcommand->{var},$setcommand->{val});
+	sendClientMessage($hash,
+	    childId => $childId,
+	    cmd => C_SET,
+	    subType => $type,
+	    payload => $mappedValue,
+	);
+	readingsSingleUpdate($hash,$setcommand->{var},$setcommand->{val},1) unless ($hash->{ack} or $hash->{IODev}->{ack});
+        };
+        return "$command not defined: ".GP_Catch($@) if $@;
+        last;
+    };
+    my $value = @values ? join " ",@values : "";
+    eval {
+        my ($type,$childId,$mappedValue) = mappedReadingToRaw($hash,$command,$value);
+        sendClientMessage($hash, childId => $childId, cmd => C_SET, subType => $type, payload => $mappedValue);
+        readingsSingleUpdate($hash,$command,$value,1) unless ($hash->{ack} or $hash->{IODev}->{ack});
+    };
+    return "$command not defined: ".GP_Catch($@) if $@;
     }
 }
 
@@ -330,44 +330,44 @@ sub Get($@) {
     my $type = $hash->{TYPE};
     return "\"get $type\" needs at least one parameter" if(@a < 2);
     if(!defined($hash->{gets}->{$a[1]})) {
-	if(!defined($gets{$a[1]})) {
-	    my @cList = map { $_ =~ m/^(file|raw)$/ ? $_ : "$_:noArg" } sort keys %gets;
-	    return "Unknown argument $a[1], choose one of " . join(" ", @cList);
-	}
+    if(!defined($gets{$a[1]})) {
+        my @cList = map { $_ =~ m/^(file|raw)$/ ? $_ : "$_:noArg" } sort keys %gets;
+        return "Unknown argument $a[1], choose one of " . join(" ", @cList);
+    }
     }
     my $command = $a[1];
     COMMAND_HANDLER: {
-	$command eq "version" and do {
-	    sendMessage($hash->{IODev}, radioId => $hash->{radioId}, cmd => C_INTERNAL, ack => 0, subType => I_VERSION);
-	    last;
-	};
-	$command eq "heartbeat" and do {
-	    sendMessage($hash->{IODev}, radioId => $hash->{radioId}, cmd => C_INTERNAL, ack => 0, subType => I_HEARTBEAT_REQUEST);
-	    last;
-	};
-	$command eq "presentation" and do {
-	    sendMessage($hash->{IODev}, radioId => $hash->{radioId}, cmd => C_INTERNAL, ack => 0, subType => I_PRESENTATION);
-	    last;
-	};
-	$command eq "RSSI" and do {
-	    sendMessage($hash->{IODev}, radioId => $hash->{radioId}, cmd => C_INTERNAL, ack => 0, subType => I_SIGNAL_REPORT_REQUEST);
-	    last;
-	};
-	$command eq "cpuFrequency" and do {
-	    $hash->{I_DEBUG} = "F";
-	    sendMessage($hash->{IODev}, radioId => $hash->{radioId}, childID => 255, cmd => C_INTERNAL, ack => 0, subType => I_DEBUG,payload => "F");
-	    last;
-	};
-	$command eq "cpuVoltage" and do {
-	    $hash->{I_DEBUG} = "V";
-	    sendMessage($hash->{IODev}, radioId => $hash->{radioId}, childID => 255, cmd => C_INTERNAL, ack => 0, subType => I_DEBUG,payload => "V");
-	    last;
-	};
-	$command eq "freeMemory" and do {
-	    $hash->{I_DEBUG} = "M";
-	    sendMessage($hash->{IODev}, radioId => $hash->{radioId}, childID => 255, cmd => C_INTERNAL, ack => 0, subType => I_DEBUG,payload => "M");
-	    last;
-	};
+    $command eq "version" and do {
+        sendMessage($hash->{IODev}, radioId => $hash->{radioId}, cmd => C_INTERNAL, ack => 0, subType => I_VERSION);
+        last;
+    };
+    $command eq "heartbeat" and do {
+        sendMessage($hash->{IODev}, radioId => $hash->{radioId}, cmd => C_INTERNAL, ack => 0, subType => I_HEARTBEAT_REQUEST);
+        last;
+    };
+    $command eq "presentation" and do {
+        sendMessage($hash->{IODev}, radioId => $hash->{radioId}, cmd => C_INTERNAL, ack => 0, subType => I_PRESENTATION);
+        last;
+    };
+    $command eq "RSSI" and do {
+        sendMessage($hash->{IODev}, radioId => $hash->{radioId}, cmd => C_INTERNAL, ack => 0, subType => I_SIGNAL_REPORT_REQUEST);
+        last;
+    };
+    $command eq "cpuFrequency" and do {
+        $hash->{I_DEBUG} = "F";
+        sendMessage($hash->{IODev}, radioId => $hash->{radioId}, childID => 255, cmd => C_INTERNAL, ack => 0, subType => I_DEBUG,payload => "F");
+        last;
+    };
+    $command eq "cpuVoltage" and do {
+        $hash->{I_DEBUG} = "V";
+        sendMessage($hash->{IODev}, radioId => $hash->{radioId}, childID => 255, cmd => C_INTERNAL, ack => 0, subType => I_DEBUG,payload => "V");
+        last;
+    };
+    $command eq "freeMemory" and do {
+        $hash->{I_DEBUG} = "M";
+        sendMessage($hash->{IODev}, radioId => $hash->{radioId}, childID => 255, cmd => C_INTERNAL, ack => 0, subType => I_DEBUG,payload => "M");
+        last;
+    };
     }
     #return "Sorry, we have to wait for $a[0]'s answer first, check for updated readings and refresh webpage!";
 }
@@ -382,59 +382,59 @@ sub onStreamMessage($$) {
     my $fwType = hex2Short(substr($msg->{payload}, 0, 4));
 
     TYPE_HANDLER: {
-	$type == ST_FIRMWARE_CONFIG_REQUEST and do {
-	    if (length($msg->{payload}) == 20) {
-		readingsBeginUpdate($hash);
-		readingsBulkUpdate($hash, 'FW_TYPE', $fwType);
-		readingsBulkUpdate($hash, 'FW_VERSION', hex2Short(substr($msg->{payload}, 4, 4)));
-		readingsBulkUpdate($hash, 'FW_BLOCKS', hex2Short(substr($msg->{payload}, 8, 4)));
-		readingsBulkUpdate($hash, 'FW_CRC', hex2Short(substr($msg->{payload}, 12, 4)));
-		readingsBulkUpdate($hash, 'BL_VERSION', $blVersion);
-		readingsEndUpdate($hash, 1);
-		Log3($name, 4, "$name: received ST_FIRMWARE_CONFIG_REQUEST");
-		if ((AttrVal($name, "OTA_autoUpdate", 0) == 1) && ($blVersion eq "3.0" or $blType eq "Optiboot")) {
-		    Log3($name, 4, "$name: Optiboot BL, Node set to OTA_autoUpdate => calling firmware update procedure");
-		    flashFirmware($hash, $fwType);
-		} elsif ($blType eq "MYSBootloader" and $hash->{flashProcedureStatus}) {
-		    Log3($name, 4, "$name: MYSBootloader asking for firmware update, calling firmware update procedure");
-		    $hash->{flashProcedureStatus} = 2;
-		    flashFirmware($hash, $fwType);
-		}
-	    } else {
-		Log3($name, 2, "$name: Failed to parse ST_FIRMWARE_CONFIG_REQUEST - expected payload length 32 but retrieved ".length($msg->{payload}));
-	    }
-	    last;
-	};
-	$type == ST_FIRMWARE_REQUEST and do {
-	    if (length($msg->{payload}) == 12) {
-		my $version = hex2Short(substr($msg->{payload}, 4, 4));
-		my $block = hex2Short(substr($msg->{payload}, 8, 4));
-		my $fromIndex = $block * 16;
-		my $payload = $msg->{payload};
-	        my @fwData = @{$hash->{FW_DATA}};
-		Log3($name, 5, "$name: Firmware block request $block (type $fwType, version $version)");
-		for (my $index = $fromIndex; $index < $fromIndex + 16; $index++) {
-		    $payload = $payload . sprintf("%02X", $fwData[$index]);
-		}
-		if (defined $hash->{OTA_Chan76_IODev}) {
+    $type == ST_FIRMWARE_CONFIG_REQUEST and do {
+        if (length($msg->{payload}) == 20) {
+	readingsBeginUpdate($hash);
+	readingsBulkUpdate($hash, 'FW_TYPE', $fwType);
+	readingsBulkUpdate($hash, 'FW_VERSION', hex2Short(substr($msg->{payload}, 4, 4)));
+	readingsBulkUpdate($hash, 'FW_BLOCKS', hex2Short(substr($msg->{payload}, 8, 4)));
+	readingsBulkUpdate($hash, 'FW_CRC', hex2Short(substr($msg->{payload}, 12, 4)));
+	readingsBulkUpdate($hash, 'BL_VERSION', $blVersion);
+	readingsEndUpdate($hash, 1);
+	Log3($name, 4, "$name: received ST_FIRMWARE_CONFIG_REQUEST");
+	if ((AttrVal($name, "OTA_autoUpdate", 0) == 1) && ($blVersion eq "3.0" or $blType eq "Optiboot")) {
+	    Log3($name, 4, "$name: Optiboot BL, Node set to OTA_autoUpdate => calling firmware update procedure");
+	    flashFirmware($hash, $fwType);
+	} elsif ($blType eq "MYSBootloader" and $hash->{flashProcedureStatus}) {
+	    Log3($name, 4, "$name: MYSBootloader asking for firmware update, calling firmware update procedure");
+	    $hash->{flashProcedureStatus} = 2;
+	    flashFirmware($hash, $fwType);
+	}
+        } else {
+	Log3($name, 2, "$name: Failed to parse ST_FIRMWARE_CONFIG_REQUEST - expected payload length 32 but retrieved ".length($msg->{payload}));
+        }
+        last;
+    };
+    $type == ST_FIRMWARE_REQUEST and do {
+        if (length($msg->{payload}) == 12) {
+	my $version = hex2Short(substr($msg->{payload}, 4, 4));
+	my $block = hex2Short(substr($msg->{payload}, 8, 4));
+	my $fromIndex = $block * 16;
+	my $payload = $msg->{payload};
+            my @fwData = @{$hash->{FW_DATA}};
+	Log3($name, 5, "$name: Firmware block request $block (type $fwType, version $version)");
+	for (my $index = $fromIndex; $index < $fromIndex + 16; $index++) {
+	    $payload = $payload . sprintf("%02X", $fwData[$index]);
+	}
+	if (defined $hash->{OTA_Chan76_IODev}) {
                     sendMessage($hash->{OTA_Chan76_IODev}, radioId => $hash->{radioId}, childId => 255, cmd => C_STREAM, subType => ST_FIRMWARE_RESPONSE, payload => $payload);
                 } else {
                     sendClientMessage($hash, childId => 255, cmd => C_STREAM, subType => ST_FIRMWARE_RESPONSE, payload => $payload);
-		}
-		readingsSingleUpdate($hash, "state", "updating", 1) unless ($hash->{STATE} eq "updating");
-	    } else {
-		Log3($name, 2, "$name: Failed to parse ST_FIRMWARE_REQUEST - expected payload length 12 but retrieved ".length($msg->{payload}));
-	    }
-	    last;
-	};
-	$type == ST_SOUND and do {
-	    #no clue what do do...
-	    last;
-	};
-	$type == ST_IMAGE and do {
-	    #no clue what do do...
-	    last;
-	};
+	}
+	readingsSingleUpdate($hash, "state", "updating", 1) unless ($hash->{STATE} eq "updating");
+        } else {
+	Log3($name, 2, "$name: Failed to parse ST_FIRMWARE_REQUEST - expected payload length 12 but retrieved ".length($msg->{payload}));
+        }
+        last;
+    };
+    $type == ST_SOUND and do {
+        #no clue what do do...
+        last;
+    };
+    $type == ST_IMAGE and do {
+        #no clue what do do...
+        last;
+    };
     }
 }
 
@@ -550,32 +550,32 @@ sub Attr($$$$) {
       last;
     };
     $attribute eq "requestAck" and do {
-	if ($command eq "set") {
-	    $hash->{ack} = 1;
-	} else {
-	    $hash->{ack} = 0;
-	}
-	last;
+    if ($command eq "set") {
+        $hash->{ack} = 1;
+    } else {
+        $hash->{ack} = 0;
+    }
+    last;
     };
     $attribute eq "timeoutAck" and do {
-	if ($command eq "set") {
-	    $hash->{timeoutAck} = $value;
-	} else {
-	    $hash->{timeoutAck} = 0;
-	}
-	last;
+    if ($command eq "set") {
+        $hash->{timeoutAck} = $value;
+    } else {
+        $hash->{timeoutAck} = 0;
+    }
+    last;
     };
     $attribute eq "timeoutAlive" and do {
-	if ($command eq "set" and $value) {
-	    $hash->{timeoutAlive} = $value;
-	    refreshInternalMySTimer($hash,"Alive");
-	} else {
-	    $hash->{timeoutAlive} = 0;
-	}
-	last;
+    if ($command eq "set" and $value) {
+        $hash->{timeoutAlive} = $value;
+        refreshInternalMySTimer($hash,"Alive");
+    } else {
+        $hash->{timeoutAlive} = 0;
+    }
+    last;
     };
     $attribute eq "OTA_autoUpdate" and do {
-	last;
+    last;
     };
   }
 }
@@ -591,54 +591,54 @@ sub onPresentationMessage($$) {
     my $nodeType = $msg->{subType};
     my $id = $msg->{childId};
     if ($id == 255) { #special id
-	NODETYPE: {
-	    $nodeType == S_ARDUINO_NODE and do {
-		CommandAttr(undef, "$name mode node");
-		last;
-	    };
-	    $nodeType == S_ARDUINO_REPEATER_NODE and do {
-		CommandAttr(undef, "$name mode repeater");
-		last;
-	    };
-	};
+    NODETYPE: {
+        $nodeType == S_ARDUINO_NODE and do {
+	CommandAttr(undef, "$name mode node");
+	last;
+        };
+        $nodeType == S_ARDUINO_REPEATER_NODE and do {
+	CommandAttr(undef, "$name mode repeater");
+	last;
+        };
+    };
     CommandAttr(undef, "$name version $msg->{payload}");
     };
 
     my $readingMappings = $hash->{readingMappings};
     my $typeMappings = $hash->{typeMappings};
     if (my $sensorMappings = $hash->{sensorMappings}->{$nodeType}) {
-	my $idStr = ($id > 0 ? $id : "");
-	my @ret = ();
-	foreach my $type (@{$sensorMappings->{sends}}) {
-	    next if (defined $readingMappings->{$id}->{$type});
-	    my $typeStr = $typeMappings->{$type}->{type};
-	    if ($hash->{IODev}->{'inclusion-mode'}) {
-		if (my $ret = CommandAttr(undef,"$name mapReading_$typeStr$idStr $id $typeStr")) {
-        	    push @ret,$ret;
-    		}
-	    } else {
-		push @ret,"no mapReading for $id, $typeStr";
+    my $idStr = ($id > 0 ? $id : "");
+    my @ret = ();
+    foreach my $type (@{$sensorMappings->{sends}}) {
+        next if (defined $readingMappings->{$id}->{$type});
+        my $typeStr = $typeMappings->{$type}->{type};
+        if ($hash->{IODev}->{'inclusion-mode'}) {
+	if (my $ret = CommandAttr(undef,"$name mapReading_$typeStr$idStr $id $typeStr")) {
+    	    push @ret,$ret;
 	    }
+        } else {
+	push @ret,"no mapReading for $id, $typeStr";
+        }
+    }
+    foreach my $type (@{$sensorMappings->{receives}}) {
+        my $typeMapping = $typeMappings->{$type};
+        my $typeStr = $typeMapping->{type};
+        next if (defined $hash->{sets}->{"$typeStr$idStr"});
+        if ($hash->{IODev}->{'inclusion-mode'}) {
+	my @values = ();
+	if ($typeMapping->{range}) {
+	    @values = ('slider',$typeMapping->{range}->{min},$typeMapping->{range}->{step},$typeMapping->{range}->{max});
+	} elsif ($typeMapping->{val}) {
+	    @values = values %{$typeMapping->{val}};
 	}
-	foreach my $type (@{$sensorMappings->{receives}}) {
-	    my $typeMapping = $typeMappings->{$type};
-	    my $typeStr = $typeMapping->{type};
-	    next if (defined $hash->{sets}->{"$typeStr$idStr"});
-	    if ($hash->{IODev}->{'inclusion-mode'}) {
-		my @values = ();
-		if ($typeMapping->{range}) {
-		    @values = ('slider',$typeMapping->{range}->{min},$typeMapping->{range}->{step},$typeMapping->{range}->{max});
-		} elsif ($typeMapping->{val}) {
-		    @values = values %{$typeMapping->{val}};
-		}
-		if (my $ret = CommandAttr(undef,"$name setReading_$typeStr$idStr".(@values ? " ".join (",",@values) : ""))) {
-		    push @ret,$ret;
-		}
-	    } else {
-		push @ret,"no setReading for $id, $typeStr";
-	    }
+	if (my $ret = CommandAttr(undef,"$name setReading_$typeStr$idStr".(@values ? " ".join (",",@values) : ""))) {
+	    push @ret,$ret;
 	}
-	Log3 ($hash->{NAME}, 4, "MYSENSORS_DEVICE $hash->{NAME}: errors on C_PRESENTATION-message for childId $id, subType ".sensorTypeToStr($nodeType)." ".join (", ",@ret)) if @ret;
+        } else {
+	push @ret,"no setReading for $id, $typeStr";
+        }
+    }
+    Log3 ($hash->{NAME}, 4, "MYSENSORS_DEVICE $hash->{NAME}: errors on C_PRESENTATION-message for childId $id, subType ".sensorTypeToStr($nodeType)." ".join (", ",@ret)) if @ret;
     }
 }
 
@@ -646,27 +646,27 @@ sub onSetMessage($$) {
     my ($hash,$msg) = @_;
     my $name = $hash->{NAME};
     if (defined $msg->{payload}) {
-	eval {
-	    my ($reading,$value) = rawToMappedReading($hash,$msg->{subType},$msg->{childId},$msg->{payload});
-	    readingsSingleUpdate($hash, $reading, $value, 1);
-	};
-	Log3 ($hash->{NAME}, 4, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_SET-message ".GP_Catch($@)) if $@;
-	#refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive}; #deactivate in case of wanted reduction of alive to internal (heartbeat/battery/smartsleep) messages
+    eval {
+        my ($reading,$value) = rawToMappedReading($hash,$msg->{subType},$msg->{childId},$msg->{payload});
+        readingsSingleUpdate($hash, $reading, $value, 1);
+    };
+    Log3 ($hash->{NAME}, 4, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_SET-message ".GP_Catch($@)) if $@;
+    #refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive}; #deactivate in case of wanted reduction of alive to internal (heartbeat/battery/smartsleep) messages
     } else {
-	Log3 ($hash->{NAME}, 5, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_SET-message without payload");
+    Log3 ($hash->{NAME}, 5, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_SET-message without payload");
     };
 }
 
 sub onRequestMessage($$) {
     my ($hash,$msg) = @_;
     eval {
-	my ($readingname,$val) = rawToMappedReading($hash, $msg->{subType}, $msg->{childId}, $msg->{payload});
-	sendClientMessage($hash,
-	    childId => $msg->{childId},
-	    cmd => C_SET,
-	    subType => $msg->{subType},
-	    payload => ReadingsVal($hash->{NAME},$readingname,$val)
-	);
+    my ($readingname,$val) = rawToMappedReading($hash, $msg->{subType}, $msg->{childId}, $msg->{payload});
+    sendClientMessage($hash,
+        childId => $msg->{childId},
+        cmd => C_SET,
+        subType => $msg->{subType},
+        payload => ReadingsVal($hash->{NAME},$readingname,$val)
+    );
     };
     refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
     Log3 ($hash->{NAME}, 4, "MYSENSORS_DEVICE $hash->{NAME}: ignoring C_REQ-message ".GP_Catch($@)) if $@;
@@ -678,179 +678,179 @@ sub onInternalMessage($$) {
     my $type = $msg->{subType};
     my $typeStr = internalMessageTypeToStr($type);
     INTERNALMESSAGE: {
-	$type == I_BATTERY_LEVEL and do {
-	    # readingsSingleUpdate($hash, "batterylevel", $msg->{payload}, 1);
-	    # Log3 ($name, 3, "MYSENSORS_DEVICE $name: batterylevel is deprecated and will be removed soon, use batteryPercent instead (Forum #87575)");
-	    readingsSingleUpdate($hash, "batteryPercent", $msg->{payload}, 1);
-	    refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
-	    Log3 ($name, 4, "MYSENSORS_DEVICE $name: batteryPercent $msg->{payload}");
-	    last;
-	};
-	$type == I_TIME and do {
-	    if ($msg->{ack}) {
-	    Log3 ($name, 4, "MYSENSORS_DEVICE $name: response to time-request acknowledged");
-	    } else {
-	    sendClientMessage($hash,cmd => C_INTERNAL, childId => 255, subType => I_TIME, payload => time);
-	    Log3 ($name, 4, "MYSENSORS_DEVICE $name: update of time requested");
-	    }
-	    last;
-	};
-	$type == I_VERSION and do {
-	    $hash->{$typeStr} = $msg->{payload};
-	    last;
-	};
-	$type == I_ID_REQUEST and do {
-	    $hash->{$typeStr} = $msg->{payload};
-	    last;
-	};
-	$type == I_ID_RESPONSE and do {
-	    $hash->{$typeStr} = $msg->{payload};
-	    last;
-	};
-	$type == I_INCLUSION_MODE and do {
-	    $hash->{$typeStr} = $msg->{payload};
-	    last;
-	};
-	$type == I_CONFIG and do {
-	    if ($msg->{ack}) {
-		Log3 ($name, 4, "MYSENSORS_DEVICE $name: response to config-request acknowledged");
-	    } else {
-		readingsSingleUpdate($hash, "parentId", $msg->{payload}, 1);
-		sendClientMessage($hash,cmd => C_INTERNAL, childId => 255, subType => I_CONFIG, payload => AttrVal($name,"config","M"));
-		Log3 ($name, 4, "MYSENSORS_DEVICE $name: respond to config-request, node parentId = " . $msg->{payload});
-	    }
-	    last;
-	};
-	$type == I_FIND_PARENT and do {
-	    $hash->{$typeStr} = $msg->{payload};
-	    last;
-	};
-	$type == I_FIND_PARENT_RESPONSE and do {
-	    $hash->{$typeStr} = $msg->{payload};
-	    last;
-	};
-	$type == I_LOG_MESSAGE and do {
-	    $hash->{$typeStr} = $msg->{payload};
-	    last;
-	};
-	$type == I_CHILDREN and do {
-	    readingsSingleUpdate($hash, "state", "routingtable cleared", 1);
-	    Log3 ($name, 3, "MYSENSORS_DEVICE $name: routingtable cleared");
-	    last;
-	};
-	$type == I_SKETCH_NAME and do {
-	    #$hash->{$typeStr} = $msg->{payload};
-	    readingsSingleUpdate($hash, "state", "received presentation", 1) unless ($hash->{STATE} eq "received presentation");
-	    readingsSingleUpdate($hash, "SKETCH_NAME", $msg->{payload}, 1);
-	    last;
-	};
-	$type == I_SKETCH_VERSION and do {
-	    #$hash->{$typeStr} = $msg->{payload};
-	    readingsSingleUpdate($hash, "SKETCH_VERSION", $msg->{payload}, 1);
-	    last;
-	};
-	$type == I_REBOOT and do {
-	    #$hash->{$typeStr} = $msg->{payload};
-	    last;
-	};
-	$type == I_GATEWAY_READY and do {
-	    $hash->{$typeStr} = $msg->{payload};
-	    last;
-	};
-	$type == I_REQUEST_SIGNING and do {
-	    #$hash->{$typeStr} = $msg->{payload};
-	    last;
-	};
-	$type == I_GET_NONCE and do {
-	    #$hash->{$typeStr} = $msg->{payload};
-	    last;
-	};
-	$type == I_GET_NONCE_RESPONSE and do {
-	    #$hash->{$typeStr} = $msg->{payload};
-	    last;
-	};
-	$type == I_HEARTBEAT_REQUEST and do {
-	    #$hash->{$typeStr} = $msg->{payload};
-	    eval {
-	    sendMessage($hash->{IODev},radioId => 0, childId => 0, cmd => C_INTERNAL, ack => 0, subType => I_HEARTBEAT_RESPONSE);
-	    };
-	    refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
-	    last;
-	};
-	$type == I_PRESENTATION and do {
-	    #$hash->{$typeStr} = $msg->{payload};
-	    undef $hash->{flashProcedureStatus};
-	    #if changed, revert IO back to regular one?
-	    last;
-	};
-	$type == I_DISCOVER_REQUEST and do {
-	    #$hash->{$typeStr} = $msg->{payload};
-	    last;
-	};
-	$type == I_DISCOVER_RESPONSE and do {
-	    #$hash->{$typeStr} = $msg->{payload};
-	    last;
-	};
-	$type == I_HEARTBEAT_RESPONSE and do {
-	    readingsSingleUpdate($hash, "heartbeat", "last", 0);
-	    refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
-	    #$hash->{$typeStr} = $msg->{payload};
-	last;
-	};
-	$type == I_LOCKED and do {
-	    $hash->{$typeStr} = $msg->{payload};
-	    last;
-	};
-	$type == I_REGISTRATION_REQUEST and do {
-	    $hash->{$typeStr} = $msg->{payload};
-	    last;
-	};
-	$type == I_REGISTRATION_RESPONSE and do {
-	    $hash->{$typeStr} = $msg->{payload};
-	    last;
-	};
-	$type == I_DEBUG and do {
-	    if ($hash->{I_DEBUG} eq "F") {
-		readingsSingleUpdate($hash, "CPU_FREQUENCY", $msg->{payload}, 1);
-	    } elsif ($hash->{I_DEBUG} eq "V") {
-		readingsSingleUpdate($hash, "CPU_VOLTAGE", $msg->{payload}, 1);
-	    } elsif ($hash->{I_DEBUG} eq "M") {
-		readingsSingleUpdate($hash, "FREE_MEMORY", $msg->{payload}, 1);
-	    }
-	    undef $hash->{I_DEBUG};
-	    last;
-	};
-	$type == I_SIGNAL_REPORT_REVERSE and do {
-	    #$hash->{$typeStr} = $msg->{payload};
-	    readingsSingleUpdate($hash, "rssi_DEVICE", $msg->{payload}, 1) if ($msg->{payload} ne "-256" );
-	    last;
-	};
-	$type == I_SIGNAL_REPORT_RESPONSE and do {
-	    #$hash->{$typeStr} = $msg->{payload};
-	    readingsSingleUpdate($hash, "rssi_at_IODev", $msg->{payload}, 1) if ($msg->{payload} ne "-256" );
-	    last;
-	};
-	$type == I_PRE_SLEEP_NOTIFICATION and do {
-	    #$hash->{$typeStr} = $msg->{payload};
-	    readingsSingleUpdate($hash,"state","asleep",1) unless ($hash->{STATE} eq "NACK");
-	    readingsSingleUpdate($hash, "nowSleeping", "1", 0);
-	    refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
-	    last;
-	};
-	$type == I_POST_SLEEP_NOTIFICATION and do {
-	    #$hash->{$typeStr} = $msg->{payload};
-	    readingsSingleUpdate($hash,"state","awake",1) unless ($hash->{STATE} eq "NACK");
-	    readingsSingleUpdate($hash, "nowSleeping", "0", 0);
-	    refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
-	    #here we can send out retained and outstanding messages
-	    $hash->{nexttry} = -1;
-	    MYSENSORS::Timer($hash);
-	    my $retainedMsg;
-	    while (defined($retainedMsg = shift @{$hash->{retainedMessagesForRadioId}})) {
-	    sendClientMessage($hash,$retainedMsg);
-	    };
-	    last;
-	};
+    $type == I_BATTERY_LEVEL and do {
+        # readingsSingleUpdate($hash, "batterylevel", $msg->{payload}, 1);
+        # Log3 ($name, 3, "MYSENSORS_DEVICE $name: batterylevel is deprecated and will be removed soon, use batteryPercent instead (Forum #87575)");
+        readingsSingleUpdate($hash, "batteryPercent", $msg->{payload}, 1);
+        refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
+        Log3 ($name, 4, "MYSENSORS_DEVICE $name: batteryPercent $msg->{payload}");
+        last;
+    };
+    $type == I_TIME and do {
+        if ($msg->{ack}) {
+        Log3 ($name, 4, "MYSENSORS_DEVICE $name: response to time-request acknowledged");
+        } else {
+        sendClientMessage($hash,cmd => C_INTERNAL, childId => 255, subType => I_TIME, payload => time);
+        Log3 ($name, 4, "MYSENSORS_DEVICE $name: update of time requested");
+        }
+        last;
+    };
+    $type == I_VERSION and do {
+        $hash->{$typeStr} = $msg->{payload};
+        last;
+    };
+    $type == I_ID_REQUEST and do {
+        $hash->{$typeStr} = $msg->{payload};
+        last;
+    };
+    $type == I_ID_RESPONSE and do {
+        $hash->{$typeStr} = $msg->{payload};
+        last;
+    };
+    $type == I_INCLUSION_MODE and do {
+        $hash->{$typeStr} = $msg->{payload};
+        last;
+    };
+    $type == I_CONFIG and do {
+        if ($msg->{ack}) {
+	Log3 ($name, 4, "MYSENSORS_DEVICE $name: response to config-request acknowledged");
+        } else {
+	readingsSingleUpdate($hash, "parentId", $msg->{payload}, 1);
+	sendClientMessage($hash,cmd => C_INTERNAL, childId => 255, subType => I_CONFIG, payload => AttrVal($name,"config","M"));
+	Log3 ($name, 4, "MYSENSORS_DEVICE $name: respond to config-request, node parentId = " . $msg->{payload});
+        }
+        last;
+    };
+    $type == I_FIND_PARENT and do {
+        $hash->{$typeStr} = $msg->{payload};
+        last;
+    };
+    $type == I_FIND_PARENT_RESPONSE and do {
+        $hash->{$typeStr} = $msg->{payload};
+        last;
+    };
+    $type == I_LOG_MESSAGE and do {
+        $hash->{$typeStr} = $msg->{payload};
+        last;
+    };
+    $type == I_CHILDREN and do {
+        readingsSingleUpdate($hash, "state", "routingtable cleared", 1);
+        Log3 ($name, 3, "MYSENSORS_DEVICE $name: routingtable cleared");
+        last;
+    };
+    $type == I_SKETCH_NAME and do {
+        #$hash->{$typeStr} = $msg->{payload};
+        readingsSingleUpdate($hash, "state", "received presentation", 1) unless ($hash->{STATE} eq "received presentation");
+        readingsSingleUpdate($hash, "SKETCH_NAME", $msg->{payload}, 1);
+        last;
+    };
+    $type == I_SKETCH_VERSION and do {
+        #$hash->{$typeStr} = $msg->{payload};
+        readingsSingleUpdate($hash, "SKETCH_VERSION", $msg->{payload}, 1);
+        last;
+    };
+    $type == I_REBOOT and do {
+        #$hash->{$typeStr} = $msg->{payload};
+        last;
+    };
+    $type == I_GATEWAY_READY and do {
+        $hash->{$typeStr} = $msg->{payload};
+        last;
+    };
+    $type == I_REQUEST_SIGNING and do {
+        #$hash->{$typeStr} = $msg->{payload};
+        last;
+    };
+    $type == I_GET_NONCE and do {
+        #$hash->{$typeStr} = $msg->{payload};
+        last;
+    };
+    $type == I_GET_NONCE_RESPONSE and do {
+        #$hash->{$typeStr} = $msg->{payload};
+        last;
+    };
+    $type == I_HEARTBEAT_REQUEST and do {
+        #$hash->{$typeStr} = $msg->{payload};
+        eval {
+        sendMessage($hash->{IODev},radioId => 0, childId => 0, cmd => C_INTERNAL, ack => 0, subType => I_HEARTBEAT_RESPONSE);
+        };
+        refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
+        last;
+    };
+    $type == I_PRESENTATION and do {
+        #$hash->{$typeStr} = $msg->{payload};
+        undef $hash->{flashProcedureStatus};
+        #if changed, revert IO back to regular one?
+        last;
+    };
+    $type == I_DISCOVER_REQUEST and do {
+        #$hash->{$typeStr} = $msg->{payload};
+        last;
+    };
+    $type == I_DISCOVER_RESPONSE and do {
+        #$hash->{$typeStr} = $msg->{payload};
+        last;
+    };
+    $type == I_HEARTBEAT_RESPONSE and do {
+        readingsSingleUpdate($hash, "heartbeat", "last", 0);
+        refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
+        #$hash->{$typeStr} = $msg->{payload};
+    last;
+    };
+    $type == I_LOCKED and do {
+        $hash->{$typeStr} = $msg->{payload};
+        last;
+    };
+    $type == I_REGISTRATION_REQUEST and do {
+        $hash->{$typeStr} = $msg->{payload};
+        last;
+    };
+    $type == I_REGISTRATION_RESPONSE and do {
+        $hash->{$typeStr} = $msg->{payload};
+        last;
+    };
+    $type == I_DEBUG and do {
+        if ($hash->{I_DEBUG} eq "F") {
+	readingsSingleUpdate($hash, "CPU_FREQUENCY", $msg->{payload}, 1);
+        } elsif ($hash->{I_DEBUG} eq "V") {
+	readingsSingleUpdate($hash, "CPU_VOLTAGE", $msg->{payload}, 1);
+        } elsif ($hash->{I_DEBUG} eq "M") {
+	readingsSingleUpdate($hash, "FREE_MEMORY", $msg->{payload}, 1);
+        }
+        undef $hash->{I_DEBUG};
+        last;
+    };
+    $type == I_SIGNAL_REPORT_REVERSE and do {
+        #$hash->{$typeStr} = $msg->{payload};
+        readingsSingleUpdate($hash, "rssi_DEVICE", $msg->{payload}, 1) if ($msg->{payload} ne "-256" );
+        last;
+    };
+    $type == I_SIGNAL_REPORT_RESPONSE and do {
+        #$hash->{$typeStr} = $msg->{payload};
+        readingsSingleUpdate($hash, "rssi_at_IODev", $msg->{payload}, 1) if ($msg->{payload} ne "-256" );
+        last;
+    };
+    $type == I_PRE_SLEEP_NOTIFICATION and do {
+        #$hash->{$typeStr} = $msg->{payload};
+        readingsSingleUpdate($hash,"state","asleep",1) unless ($hash->{STATE} eq "NACK");
+        readingsSingleUpdate($hash, "nowSleeping", "1", 0);
+        refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
+        last;
+    };
+    $type == I_POST_SLEEP_NOTIFICATION and do {
+        #$hash->{$typeStr} = $msg->{payload};
+        readingsSingleUpdate($hash,"state","awake",1) unless ($hash->{STATE} eq "NACK");
+        readingsSingleUpdate($hash, "nowSleeping", "0", 0);
+        refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
+        #here we can send out retained and outstanding messages
+        $hash->{nexttry} = -1;
+        MYSENSORS::Timer($hash);
+        my $retainedMsg;
+        while (defined($retainedMsg = shift @{$hash->{retainedMessagesForRadioId}})) {
+        sendClientMessage($hash,$retainedMsg);
+        };
+        last;
+    };
     }
 }
 
@@ -859,24 +859,24 @@ sub sendClientMessage($%) {
     $msg{radioId} = $hash->{radioId};
     $msg{ack} = $hash->{ack} unless defined $msg{ack};
     unless ($hash->{nowSleeping}) {
-	sendMessage($hash->{IODev},%msg);
-	refreshInternalMySTimer($hash,"Ack") if (($hash->{ack} or $hash->{IODev}->{ack}) and $hash->{timeoutAck});
+    sendMessage($hash->{IODev},%msg);
+    refreshInternalMySTimer($hash,"Ack") if (($hash->{ack} or $hash->{IODev}->{ack}) and $hash->{timeoutAck});
     } else {
-	#write to queue if node is asleep
-	my $retainedMessagesForRadioId = $hash->{retainedMessagesForRadioId}->{$msg{radioId}};
-	unless (defined $retainedMessagesForRadioId) {
-	    $retainedMessagesForRadioId = {
-		messages => [],
-	    };
-	    $hash->{retainedMessagesForRadioId}->{$msg{radioId}} = $retainedMessagesForRadioId;
-	}
-	my $messages = $retainedMessagesForRadioId->{messages};
-	@$messages = grep {
-	    $_->{childId} != $msg{childId}
-	    or $_->{cmd}     != $msg{cmd}
-	    or $_->{subType} != $msg{subType}
-	} @$messages;
-	push @$messages,\%msg;
+    #write to queue if node is asleep
+    my $retainedMessagesForRadioId = $hash->{retainedMessagesForRadioId}->{$msg{radioId}};
+    unless (defined $retainedMessagesForRadioId) {
+        $retainedMessagesForRadioId = {
+	messages => [],
+        };
+        $hash->{retainedMessagesForRadioId}->{$msg{radioId}} = $retainedMessagesForRadioId;
+    }
+    my $messages = $retainedMessagesForRadioId->{messages};
+    @$messages = grep {
+        $_->{childId} != $msg{childId}
+        or $_->{cmd}     != $msg{cmd}
+        or $_->{subType} != $msg{subType}
+    } @$messages;
+    push @$messages,\%msg;
     }
 }
 
@@ -884,8 +884,8 @@ sub rawToMappedReading($$$$) {
     my($hash, $type, $childId, $value) = @_;
     my $name;
     if (defined (my $mapping = $hash->{readingMappings}->{$childId}->{$type})) {
-	my $val = $mapping->{val} // $hash->{typeMappings}->{$type}->{val};
-	return ($mapping->{name},defined $val ? ($val->{$value} // $value) : $value);
+    my $val = $mapping->{val} // $hash->{typeMappings}->{$type}->{val};
+    return ($mapping->{name},defined $val ? ($val->{$value} // $value) : $value);
     }
     die "no reading-mapping for childId $childId, type ".($hash->{typeMappings}->{$type}->{type} ? $hash->{typeMappings}->{$type}->{type} : variableTypeToStr($type));
 }
@@ -894,17 +894,17 @@ sub mappedReadingToRaw($$$) {
     my ($hash,$reading,$value) = @_;
     my $readingsMapping = $hash->{readingMappings};
     foreach my $id (keys %$readingsMapping) {
-	my $readingTypesForId = $readingsMapping->{$id};
-	foreach my $type (keys %$readingTypesForId) {
-	    if (($readingTypesForId->{$type}->{name} // "") eq $reading) {
-		if (my $valueMappings = $readingTypesForId->{$type}->{val} // $hash->{typeMappings}->{$type}->{val}) {
-		    if (my @mappedValues = grep {$valueMappings->{$_} eq $value} keys %$valueMappings) {
-			return ($type,$id,shift @mappedValues);
-		    }
-		}
-	    return ($type,$id,$value);
+    my $readingTypesForId = $readingsMapping->{$id};
+    foreach my $type (keys %$readingTypesForId) {
+        if (($readingTypesForId->{$type}->{name} // "") eq $reading) {
+	if (my $valueMappings = $readingTypesForId->{$type}->{val} // $hash->{typeMappings}->{$type}->{val}) {
+	    if (my @mappedValues = grep {$valueMappings->{$_} eq $value} keys %$valueMappings) {
+	    return ($type,$id,shift @mappedValues);
 	    }
 	}
+        return ($type,$id,$value);
+        }
+    }
     }
     die "no mapping for reading $reading";
 }
@@ -925,80 +925,80 @@ sub flashFirmware($$) {
     my $name = $hash->{NAME};
     my ($version, $filename, $firmwarename) = getLatestFirmware($hash->{IODev}, $fwType);
     if (not defined $filename) {
-	Log3 ($name,3,"No firmware defined for type $fwType - not flashing!");
-	return "No firmware defined for type " . $fwType ;
+    Log3 ($name,3,"No firmware defined for type $fwType - not flashing!");
+    return "No firmware defined for type " . $fwType ;
     }
     my ($err, @lines) = FileRead({FileName => "./FHEM/firmware/" . $filename, ForceType => "file"});
     if (defined($err) && $err) {
-	Log3 ($name,3,"Could not read firmware file - $err: not flashing!");
-	return "Could not read firmware file - $err";
+    Log3 ($name,3,"Could not read firmware file - $err: not flashing!");
+    return "Could not read firmware file - $err";
     } else {
-	my $start = 0;
-	my $end = 0;
-	my @fwdata = ();
-	readingsSingleUpdate($hash, "state", "updating", 1) unless ($hash->{STATE} eq "updating");
-	for (my $i = 0; $i < @lines ; $i++) {
-	    chomp(my $row = $lines[$i]);
-	    if (length($row) > 0) {
-		$row =~ s/^:+//;
-		my $reclen = hex(substr($row, 0, 2));
-		my $offset = hex(substr($row, 2, 4));
-		my $rectype = hex(substr($row, 6, 2));
-		my $data = substr($row, 8, 2 * $reclen);
-		if ($rectype == 0) {
-		    if (($start == 0) && ($end == 0)) {
-			if ($offset % 128 > 0) {
-			    Log3 ($name,3,"error loading hex file - offset can't be devided by 128");
-			    return "error loading hex file - offset can't be devided by 128" ;
-			}
-			$start = $offset;
-			$end = $offset;
-		    }
-		    if ($offset < $end) {
-			Log3 ($name,3,"error loading hex file - offset can't be devided by 128");
-			return "error loading hex file - offset lower than end" ;
-		    }
-		    while ($offset > $end) {
-			push(@fwdata, 255);
-			$end++;
-		    }
-		    for (my $i = 0; $i < $reclen; $i++) {
-			push(@fwdata, hex(substr($data, $i * 2, 2)));
-		    }
-		    $end += $reclen;
-		}
+    my $start = 0;
+    my $end = 0;
+    my @fwdata = ();
+    readingsSingleUpdate($hash, "state", "updating", 1) unless ($hash->{STATE} eq "updating");
+    for (my $i = 0; $i < @lines ; $i++) {
+        chomp(my $row = $lines[$i]);
+        if (length($row) > 0) {
+	$row =~ s/^:+//;
+	my $reclen = hex(substr($row, 0, 2));
+	my $offset = hex(substr($row, 2, 4));
+	my $rectype = hex(substr($row, 6, 2));
+	my $data = substr($row, 8, 2 * $reclen);
+	if ($rectype == 0) {
+	    if (($start == 0) && ($end == 0)) {
+	    if ($offset % 128 > 0) {
+	        Log3 ($name,3,"error loading hex file - offset can't be devided by 128");
+	        return "error loading hex file - offset can't be devided by 128" ;
 	    }
-	}
-	my $pad = $end % 128; # ATMega328 has 64 words per page / 128 bytes per page
-	for (my $i = 0; $i < 128 - $pad; $i++) {
+	    $start = $offset;
+	    $end = $offset;
+	    }
+	    if ($offset < $end) {
+	    Log3 ($name,3,"error loading hex file - offset can't be devided by 128");
+	    return "error loading hex file - offset lower than end" ;
+	    }
+	    while ($offset > $end) {
 	    push(@fwdata, 255);
 	    $end++;
-	}
-	my $blocks = ($end - $start) / 16;
-	my $crc = 0xFFFF;
-	for (my $index = 0; $index < @fwdata; ++$index) {
-	    $crc ^= $fwdata[$index] & 0xFF;
-	    for (my $bit = 0; $bit < 8; ++$bit) {
-		if (($crc & 0x01) == 0x01) {
-		    $crc = (($crc >> 1) ^ 0xA001);
-		} else {
-		    $crc = ($crc >> 1);
-		}
 	    }
+	    for (my $i = 0; $i < $reclen; $i++) {
+	    push(@fwdata, hex(substr($data, $i * 2, 2)));
+	    }
+	    $end += $reclen;
 	}
-	if (($version != ReadingsNum($name, "FW_VERSION", -1)) || ($blocks != ReadingsNum($name, "FW_BLOCKS", -1)) || ($crc != ReadingsNum($name, "FW_CRC", -1))) {
-	    Log3($name, 4, "$name: Flashing './FHEM/firmware/" . $filename . "'");
-	    $hash->{FW_DATA} = \@fwdata;
-	    my $payload = short2Hex($fwType) . short2Hex($version) . short2Hex($blocks) . short2Hex($crc);
-	    if (defined $hash->{OTA_Chan76_IODev}) {
+        }
+    }
+    my $pad = $end % 128; # ATMega328 has 64 words per page / 128 bytes per page
+    for (my $i = 0; $i < 128 - $pad; $i++) {
+        push(@fwdata, 255);
+        $end++;
+    }
+    my $blocks = ($end - $start) / 16;
+    my $crc = 0xFFFF;
+    for (my $index = 0; $index < @fwdata; ++$index) {
+        $crc ^= $fwdata[$index] & 0xFF;
+        for (my $bit = 0; $bit < 8; ++$bit) {
+	if (($crc & 0x01) == 0x01) {
+	    $crc = (($crc >> 1) ^ 0xA001);
+	} else {
+	    $crc = ($crc >> 1);
+	}
+        }
+    }
+    if (($version != ReadingsNum($name, "FW_VERSION", -1)) || ($blocks != ReadingsNum($name, "FW_BLOCKS", -1)) || ($crc != ReadingsNum($name, "FW_CRC", -1))) {
+        Log3($name, 4, "$name: Flashing './FHEM/firmware/" . $filename . "'");
+        $hash->{FW_DATA} = \@fwdata;
+        my $payload = short2Hex($fwType) . short2Hex($version) . short2Hex($blocks) . short2Hex($crc);
+        if (defined $hash->{OTA_Chan76_IODev}) {
                 sendMessage($hash->{OTA_Chan76_IODev}, radioId => $hash->{radioId}, childId => 255, cmd => C_STREAM, subType => ST_FIRMWARE_CONFIG_RESPONSE, payload => $payload);
             } else {
                 sendClientMessage($hash, childId => 255, cmd => C_STREAM, subType => ST_FIRMWARE_CONFIG_RESPONSE, payload => $payload);
-	    }
-	    return undef;
-	} else {
-	    return "Nothing todo - latest firmware already installed";
-	}
+        }
+        return undef;
+    } else {
+        return "Nothing todo - latest firmware already installed";
+    }
     }
 }
 
@@ -1007,18 +1007,18 @@ sub refreshInternalMySTimer($$) {
     my $name = $hash->{NAME};
     Log3 $name, 5, "$name: refreshInternalMySTimer called ($calltype)";
     if ($calltype eq "Alive") {
-	RemoveInternalTimer("timeoutAlive:$name");
-	my $nextTrigger = main::gettimeofday() + $hash->{timeoutAlive};
-	InternalTimer($nextTrigger, "MYSENSORS::DEVICE::timeoutMySTimer", "timeoutAlive:$name", 0);
-	if ($hash->{STATE} ne "NACK" or $hash->{STATE} eq "NACK" and @{$hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}} == 0) {
-	    my $do_trigger = $hash->{STATE} ne "alive" ? 1 : 0;
-	    readingsSingleUpdate($hash,"state","alive",$do_trigger);
-	}
+    RemoveInternalTimer("timeoutAlive:$name");
+    my $nextTrigger = main::gettimeofday() + $hash->{timeoutAlive};
+    InternalTimer($nextTrigger, "MYSENSORS::DEVICE::timeoutMySTimer", "timeoutAlive:$name", 0);
+    if ($hash->{STATE} ne "NACK" or $hash->{STATE} eq "NACK" and @{$hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}} == 0) {
+        my $do_trigger = $hash->{STATE} ne "alive" ? 1 : 0;
+        readingsSingleUpdate($hash,"state","alive",$do_trigger);
+    }
     } elsif ($calltype eq "Ack") {
-	RemoveInternalTimer("timeoutAck:$name");
-	my $nextTrigger = main::gettimeofday() + $hash->{timeoutAck};
-	InternalTimer($nextTrigger, "MYSENSORS::DEVICE::timeoutMySTimer", "timeoutAck:$name", 0);
-	Log3 $name, 4, "$name: Ack timeout timer set at $nextTrigger";
+    RemoveInternalTimer("timeoutAck:$name");
+    my $nextTrigger = main::gettimeofday() + $hash->{timeoutAck};
+    InternalTimer($nextTrigger, "MYSENSORS::DEVICE::timeoutMySTimer", "timeoutAck:$name", 0);
+    Log3 $name, 4, "$name: Ack timeout timer set at $nextTrigger";
     }
 }
 
@@ -1027,19 +1027,19 @@ sub timeoutMySTimer($) {
     my $hash = $main::defs{$name};
     Log3 $name, 5, "$name: timeoutMySTimer called ($calltype)";
     if ($calltype eq "timeoutAlive") {
-	readingsSingleUpdate($hash,"state","dead",1) unless ($hash->{STATE} eq "NACK");
+    readingsSingleUpdate($hash,"state","dead",1) unless ($hash->{STATE} eq "NACK");
     } elsif ($calltype eq "timeoutAck") {
-	#readingsSingleUpdate($hash,"state","timeoutAck passed",1);# if ($hash->{STATE} eq "NACK");
-	if ($hash->{IODev}->{outstandingAck} == 0) {
-	    Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), no outstanding Acks at all";
-	    readingsSingleUpdate($hash,"state","alive",1) if ($hash->{STATE} eq "NACK");
-	} elsif (@{$hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}}) {
-	    Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), outstanding: $hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}";
-	    readingsSingleUpdate($hash,"state","NACK",1) ;
-	} else {
-	    Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), no outstanding Acks for Node";
-	    readingsSingleUpdate($hash,"state","alive",1) if ($hash->{STATE} eq "NACK");
-	}
+    #readingsSingleUpdate($hash,"state","timeoutAck passed",1);# if ($hash->{STATE} eq "NACK");
+    if ($hash->{IODev}->{outstandingAck} == 0) {
+        Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), no outstanding Acks at all";
+        readingsSingleUpdate($hash,"state","alive",1) if ($hash->{STATE} eq "NACK");
+    } elsif (@{$hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}}) {
+        Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), outstanding: $hash->{IODev}->{messagesForRadioId}->{$hash->{radioId}}->{messages}";
+        readingsSingleUpdate($hash,"state","NACK",1) ;
+    } else {
+        Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), no outstanding Acks for Node";
+        readingsSingleUpdate($hash,"state","alive",1) if ($hash->{STATE} eq "NACK");
+    }
     }
 }
 
@@ -1127,7 +1127,7 @@ sub timeoutMySTimer($) {
     <li>
         <p><code>attr &lt;name&gt; OTA_BL_Type &lt;either Optiboot or MYSBootloader&gt;*</code><br/>For other bootloaders than Optiboot V3.0 OTA updates will only work if bootloader type is specified - MYSBootloader will reboot node if firmware update is started, so make sure, node will really recover</p>
     </li>
-	<li>
+    <li>
         <p><code>attr &lt;name&gt; OTA_Chan76_IODev </code><br/>As MYSBootloader per default uses nRF24 channel 76, you may specify a different IODev for OTA data using channel 76</p>
     </li>
     <li>
