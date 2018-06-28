@@ -61,7 +61,7 @@ sub MYSENSORS_Initialize($) {
     "first-sensorid ".
     "last-sensorid ".
     "stateFormat ".
-    "firmwareConfig";
+    "OTA_firmwareConfig";
 }
 
 package MYSENSORS;
@@ -171,7 +171,7 @@ sub Attr($$$$) {
       }
       last;
     };
-    $attribute eq "firmwareConfig" and do {
+    $attribute eq "OTA_firmwareConfig" and do {
       last;
     };  
   }
@@ -432,7 +432,7 @@ sub getFirmwareTypes($) {
   my ($hash) = @_;
   my $name = $hash->{NAME};
   my @fwTypes = ();
-  my $filename = AttrVal($name, "firmwareConfig", undef);
+  my $filename = AttrVal($name, "OTA_firmwareConfig", undef);
   if (defined($filename)) {  
     my ($err, @lines) = FileRead({FileName => "./FHEM/firmware/" . $filename, 
                                   ForceType => "file"}); 
@@ -455,7 +455,7 @@ sub getFirmwareTypes($) {
 sub getLatestFirmware($$) {
   my ($hash, $type) = @_;
   my $name = $hash->{NAME};
-  my $cfgfilename = AttrVal($name, "firmwareConfig", undef);
+  my $cfgfilename = AttrVal($name, "OTA_firmwareConfig", undef);
   my $version = undef;
   my $name = undef;
   my $filename = undef;
@@ -596,8 +596,8 @@ sub matchClient($$) {
          configures the lowest node-id assigned to a mysensor-node on request (defaults to 20)</p>
     </li>
     <li>
-      <a href="MYSENSORSattrfirmwareConfig"></a>
-      <p><code>att &lt;name&gt; firmwareConfig &lt;filename&gt;</code><br/>
+      <a href="MYSENSORSattrOTA_firmwareConfig"></a>
+      <p><code>att &lt;name&gt; OTA_firmwareConfig &lt;filename&gt;</code><br/>
          specifies a configuration file for the <a href="https://www.mysensors.org/about/fota">FOTA</a>
          (firmware over the air - wireless programming of the nodes) configuration. It must be stored 
          in the folder FHEM/firmware. The format of the configuration file is the following (csv):</p>
