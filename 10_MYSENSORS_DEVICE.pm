@@ -925,7 +925,7 @@ sub sendClientMessage($%) {
 			} @$messages;
 			push @$messages,\%msg;
 		}
-		$hash->{retainedMessages}=scalar(@$messages);
+		eval($hash->{retainedMessages}=scalar(@$messages));
     }
 }
 
@@ -1041,10 +1041,14 @@ sub flashFirmware($$) {
 			my $payload = short2Hex($fwType) . short2Hex($version) . short2Hex($blocks) . short2Hex($crc);
 			if (defined $hash->{OTA_Chan76_IODev}) {
 				sendMessage($hash->{OTA_Chan76_IODev}, radioId => $hash->{radioId}, childId => 255, cmd => C_STREAM, subType => ST_FIRMWARE_CONFIG_RESPONSE, payload => $payload);
+				Log3 ($name,5,"Directly send firmware info to $name using OTA_Chan76_IODev");
+			} elsif (AttrVal($name, "OTA_BL_Type", "") eq "MYSBootloader") {
+				sendMessage($hash->{IODev}, radioId => $hash->{radioId}, childId => 255, cmd => C_STREAM, subType => ST_FIRMWARE_CONFIG_RESPONSE, payload => $payload);
+				Log3 ($name,5,"Directly send firmware info to $name using regular IODev");
 			} else {
-					sendClientMessage($hash, childId => 255, cmd => C_STREAM, subType => ST_FIRMWARE_CONFIG_RESPONSE, payload => $payload);
+				sendClientMessage($hash, childId => 255, cmd => C_STREAM, subType => ST_FIRMWARE_CONFIG_RESPONSE, payload => $payload);
+				Log3 ($name,5,"Send firmware info to $name using sendClientMessage");
 			}
-			Log3 ($name,5,"Send firmware info to $name.");
 			return undef;
 		} else {
 			return "Nothing todo - latest firmware already installed";
