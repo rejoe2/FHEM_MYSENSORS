@@ -412,7 +412,7 @@ sub onStreamMsg($$) {
 sub onAcknowledge($$) {
   my ($hash,$msg) = @_;
   my $ack;
-  if (defined (my $outstanding = $hash->{messagesForRadioId}->{$msg->{radioId}}->{messages})) {
+  if (ref (my $outstanding = $hash->{messagesForRadioId}->{$msg->{radioId}}->{messages}) eq 'ARRAY') {
     my @remainMsg = grep {
          $_->{childId} != $msg->{childId}
       or $_->{cmd}     != $msg->{cmd}
@@ -486,13 +486,13 @@ sub getLatestFirmware($$) {
 
 sub sendMessage($%) {
   my ($hash,%msg) = @_;
-  $msg{ack} = $hash->{ack} unless defined $msg{ack};
+  $msg{ack} = $hash->{ack} unless (ref ($msg{ack}) eq 'HASH');
   my $txt = createMsg(%msg);
   Log3 ($hash->{NAME},5,"MYSENSORS send: ".dumpMsg(\%msg));
   DevIo_SimpleWrite($hash,"$txt\n",undef);
   if ($msg{ack}) {
     my $messagesForRadioId = $hash->{messagesForRadioId}->{$msg{radioId}};
-    unless (defined $messagesForRadioId) {
+    if (ref ($messagesForRadioId) eq 'ARRAY') {
       $messagesForRadioId = {
         lastseen => -1,
         numtries => 1,
