@@ -233,6 +233,7 @@ sub Init($) {
   return undef;
 }
 
+#looped check if there are any messages sent with ack request waiting for ack; in case if: resend them
 sub Timer($) {
   my $hash = shift;
   my $now = time;
@@ -251,6 +252,7 @@ sub Timer($) {
   _scheduleTimer($hash);
 }
 
+#Handle incoming data
 sub Read {
   my ($hash) = @_;
   my $name = $hash->{NAME};
@@ -304,6 +306,10 @@ sub Read {
   return undef;
 };
 
+#########################################
+# The following onXXXMsg() routines call the corresponding routines 
+# for the client MYSENSORS_DEVICE of each message
+#########################################
 sub onPresentationMsg($$) {
   my ($hash,$msg) = @_;
   my $client = matchClient($hash,$msg);
@@ -409,6 +415,10 @@ sub onStreamMsg($$) {
   }
 };
 
+#########################################
+# Handle Ack messages: 
+# delete delievered messages from queue and update # of outstanding Acks
+#########################################
 sub onAcknowledge($$) {
   my ($hash,$msg) = @_;
   my $ack;
@@ -428,6 +438,9 @@ sub onAcknowledge($$) {
   Log3 ($hash->{NAME},4,"MYSENSORS Read: unexpected ack ".dumpMsg($msg)) unless $ack;
 }
 
+#########################################
+# The following routines are needed for OTA functionality 
+#########################################
 sub getFirmwareTypes($) {
   my ($hash) = @_;
   my $name = $hash->{NAME};
@@ -483,7 +496,11 @@ sub getLatestFirmware($$) {
   return ($version, $filename, $name);
 }
 
-
+#########################################
+# The following routine is called by the client MYSENSORS_DEVICEs
+# In case of Ack is requested, message is also added to a queue for later check, if 
+# message has been transferred successfully or has to be resend
+#########################################
 sub sendMessage($%) {
   my ($hash,%msg) = @_;
   $msg{ack} = $hash->{ack} unless defined $msg{ack};
@@ -492,7 +509,7 @@ sub sendMessage($%) {
   DevIo_SimpleWrite($hash,"$txt\n",undef);
   if ($msg{ack}) {
     my $messagesForRadioId = $hash->{messagesForRadioId}->{$msg{radioId}};
-    if (ref ($messagesForRadioId) eq 'ARRAY') {
+    unless (defined $messagesForRadioId) {
       $messagesForRadioId = {
         lastseen => -1,
         numtries => 1,
@@ -513,6 +530,9 @@ sub sendMessage($%) {
   }
 };
 
+#########################################
+# Helper function for supervision of the Ack-message queue 
+#########################################
 sub _scheduleTimer($) {
   my ($hash) = @_;
   $hash->{outstandingAck} = 0;
@@ -526,6 +546,9 @@ sub _scheduleTimer($) {
   InternalTimer($next, "MYSENSORS::Timer", $hash, 0) if (defined $next);
 }
 
+#########################################
+# Helper function to identify receiving MYENSORS_DEVICE for incoming messages
+#########################################
 sub matchClient($$) {
   my ($hash,$msg) = @_;
   my $radioId = $msg->{radioId};
