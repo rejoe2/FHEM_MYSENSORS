@@ -486,7 +486,7 @@ sub getLatestFirmware($$) {
 
 sub sendMessage($%) {
   my ($hash,%msg) = @_;
-  $msg{ack} = $hash->{ack} unless (ref ($msg{ack}) eq 'HASH');
+  $msg{ack} = $hash->{ack} unless defined $msg{ack};
   my $txt = createMsg(%msg);
   Log3 ($hash->{NAME},5,"MYSENSORS send: ".dumpMsg(\%msg));
   DevIo_SimpleWrite($hash,"$txt\n",undef);
