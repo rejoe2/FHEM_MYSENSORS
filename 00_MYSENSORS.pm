@@ -233,7 +233,9 @@ sub Init($) {
   return undef;
 }
 
+############################
 #looped check if there are any messages sent with ack request waiting for ack; in case if: resend them
+############################
 sub Timer($) {
   my $hash = shift;
   my $now = time;
@@ -252,7 +254,9 @@ sub Timer($) {
   _scheduleTimer($hash);
 }
 
+##########################
 #Handle incoming data
+##########################
 sub Read {
   my ($hash) = @_;
   my $name = $hash->{NAME};
@@ -305,6 +309,7 @@ sub Read {
   $hash->{PARTIAL} = $data;
   return undef;
 };
+
 
 #########################################
 # The following onXXXMsg() routines call the corresponding routines 
@@ -422,6 +427,7 @@ sub onStreamMsg($$) {
 sub onAcknowledge($$) {
   my ($hash,$msg) = @_;
   my $ack;
+  #if (defined (my $outstanding = $hash->{messagesForRadioId}->{$msg->{radioId}}->{messages})) {
   if (ref (my $outstanding = $hash->{messagesForRadioId}->{$msg->{radioId}}->{messages}) eq 'ARRAY') {
     my @remainMsg = grep {
          $_->{childId} != $msg->{childId}
@@ -545,6 +551,7 @@ sub _scheduleTimer($) {
   };
   InternalTimer($next, "MYSENSORS::Timer", $hash, 0) if (defined $next);
 }
+
 
 #########################################
 # Helper function to identify receiving MYENSORS_DEVICE for incoming messages
