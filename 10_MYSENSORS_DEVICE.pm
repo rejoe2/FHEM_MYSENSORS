@@ -606,6 +606,7 @@ sub onPresentationMessage($$) {
 	my @ret = ();
 	foreach my $type (@{$sensorMappings->{sends}}) {
 	    if (defined $readingMappings->{$id}->{$type}) {
+		next unless defined $hash->{getCommentReadings};
 		next unless $hash->{getCommentReadings} eq "2";
 	    }
 	    my $typeStr = $typeMappings->{$type}->{type};
@@ -761,11 +762,13 @@ sub onInternalMessage($$) {
         readingsSingleUpdate($hash, "SKETCH_NAME", $msg->{payload}, 1);
         #undef $hash->{FW_DATA}; # enable this to free memory?
         #delete $hash->{FW_DATA};
-        if ($hash->{getCommentReadings} eq "1") {
-            $hash->{getCommentReadings} = 2 ;
-        }elsif ($hash->{getCommentReadings} eq "2") {
-	    undef $hash->{getCommentReadings};
-            delete $hash->{getCommentReadings};
+    	if (defined $hash->{getCommentReadings}){
+	    if ($hash->{getCommentReadings} eq "1") {
+    	        $hash->{getCommentReadings} = 2 ;
+    	    }elsif ($hash->{getCommentReadings} eq "2") {
+		undef $hash->{getCommentReadings};
+    	        delete $hash->{getCommentReadings};
+	    }
 	}
         last;
     };
