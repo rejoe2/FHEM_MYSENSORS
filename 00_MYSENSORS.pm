@@ -476,7 +476,7 @@ sub getLatestFirmware($$) {
   my $name = $hash->{NAME};
   my $cfgfilename = AttrVal($name, "OTA_firmwareConfig", undef);
   my $version = undef;
-  my $name = undef;
+  my $retname = undef;
   my $filename = undef;
   if (defined($cfgfilename)) {  
     my ($err, @lines) = FileRead({FileName => "./FHEM/firmware/" . $cfgfilename, 
@@ -490,7 +490,7 @@ sub getLatestFirmware($$) {
           my @tokens = split(",", $row);
           if ($tokens[0] eq $type) {
             if ((not defined $version) || ($tokens[2] > $version)) {
-              $name = $tokens[1];
+              $retname = $tokens[1];
               $version = $tokens[2];
               $filename = $tokens[3];
             }
@@ -499,7 +499,7 @@ sub getLatestFirmware($$) {
       }
     }
   }
-  return ($version, $filename, $name);
+  return ($version, $filename, $retname);
 }
 
 #########################################
