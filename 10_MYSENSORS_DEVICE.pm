@@ -641,6 +641,7 @@ sub onPresentationMessage($$) {
 	    }
 	    if (defined $hash->{sets}->{"$typeStr$idStr"}) {
 		next unless $hash->{getCommentReadings} eq "2";
+		###hier müssten die Set-Einträge gelöscht werden
 	    }
 	    if ($hash->{IODev}->{'inclusion-mode'}) {
 		my @values = ();
@@ -891,6 +892,12 @@ sub onInternalMessage($$) {
         #$hash->{$typeStr} = $msg->{payload};
         refreshInternalMySTimer($hash,"Asleep");
         refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
+        #here we send out retained and outstanding messages
+        MYSENSORS::Timer($hash);
+        my $retainedMsg;
+        while (ref ($retainedMsg = shift @{$hash->{retainedMessagesForRadioId}->{messages}}) eq 'HASH') {
+	    sendClientMessage($hash,%$retainedMsg);
+        };
         last;
     };
     $type == I_POST_SLEEP_NOTIFICATION and do {
@@ -898,12 +905,6 @@ sub onInternalMessage($$) {
         readingsSingleUpdate($hash,"state","awake",1) unless ($hash->{STATE} eq "NACK");
         $hash->{nowSleeping} = 0;
         refreshInternalMySTimer($hash,"Alive") if $hash->{timeoutAlive};
-        #here we send out retained and outstanding messages
-        MYSENSORS::Timer($hash);
-        my $retainedMsg;
-        while (ref ($retainedMsg = shift @{$hash->{retainedMessagesForRadioId}->{messages}}) eq 'HASH') {
-	    sendClientMessage($hash,%$retainedMsg);
-        };
         last;
     };
   }
