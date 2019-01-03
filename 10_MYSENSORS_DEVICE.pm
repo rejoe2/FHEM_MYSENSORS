@@ -3,7 +3,7 @@
 # fhem bridge to MySensors (see http://mysensors.org)
 #
 # Copyright (C) 2014 Norbert Truchsess
-# Copyright (C) 2018 Hauswart@forum.fhem.de
+# Copyright (C) 2019 Hauswart@forum.fhem.de
 #
 #     This file is part of fhem.
 #
@@ -228,7 +228,6 @@ sub Define($$) {
     $hash->{typeMappings} = {map {variableTypeToIdx($_) => $static_mappings{$_}} keys %static_mappings};
     $hash->{sensorMappings} = {map {sensorTypeToIdx($_) => $static_types{$_}} keys %static_types};
     $hash->{readingMappings} = {};
-    #$hash->{retainedMessagesForRadioId} = {messages => []}; #initialise message array for smartSleep node
     AssignIoPort($hash);
 };
 
@@ -271,43 +270,43 @@ sub Set($@) {
         my $blType = AttrVal($name, "OTA_BL_Type", "");
         my $fwType = ReadingsNum($name, "FW_TYPE", -1);
         if ($fwType == -1) {
-        Log3 ($name,3,"Firmware type not defined (FW_TYPE) for $name, update not started");
-        return "$name: Firmware type not defined (FW_TYPE)";
+          Log3 ($name,3,"Firmware type not defined (FW_TYPE) for $name, update not started");
+          return "$name: Firmware type not defined (FW_TYPE)";
         } elsif ($blVersion eq "3.0" or $blType eq "Optiboot") {
-        Log3 ($name,4,"Startet flashing Firmware: Optiboot method");
-        return flashFirmware($hash, $fwType);
+          Log3 ($name,4,"Startet flashing Firmware: Optiboot method");
+          return flashFirmware($hash, $fwType);
         } elsif ($blType eq "MYSBootloader") {
-        #$hash->{flashProcedureStatus} = 1;
-        Log3 ($name,4,"Send reboot command to MYSBootloader node to start update");
-        sendClientMessage($hash, childId => 255, cmd => C_INTERNAL, ack => 1, subType => I_REBOOT);
+          $hash->{flashProcedureStatus} = 1;
+          Log3 ($name,4,"Send reboot command to MYSBootloader node to start update");
+          sendClientMessage($hash, childId => 255, cmd => C_INTERNAL, ack => 1, subType => I_REBOOT);
         } else {
-        return "$name: No valid OTA_BL_Type specified" if ($blVersion eq "");
-        return "$name: Expected bootloader version 3.0 but found: $blVersion or specify a valid OTA_BL_Type";
+          return "$name: No valid OTA_BL_Type specified" if ($blVersion eq "");
+          return "$name: Expected bootloader version 3.0 but found: $blVersion or specify a valid OTA_BL_Type";
         }
         last;
     };
     $command eq "fwType" and do {
         if (@values == 1) {
-        my ($type) = @values;
-        if ($type =~ /^\d*$/) {
-    readingsSingleUpdate($hash, 'FW_TYPE', $type, 1);
-        } else {
-    return "fwType must be numeric";
+          my ($type) = @values;
+          if ($type =~ /^\d*$/) {
+	    readingsSingleUpdate($hash, 'FW_TYPE', $type, 1);
+          } else {
+            return "fwType must be numeric";
+          }
         }
-    }
         last;
     };
     (defined ($hash->{setcommands}->{$command})) and do {
         my $setcommand = $hash->{setcommands}->{$command};
         eval {
             my ($type,$childId,$mappedValue) = mappedReadingToRaw($hash,$setcommand->{var},$setcommand->{val});
-        sendClientMessage($hash,
-            childId => $childId,
-	cmd => C_SET,
-	subType => $type,
-	payload => $mappedValue,
-	    );
-	    readingsSingleUpdate($hash,$setcommand->{var},$setcommand->{val},1) unless ($hash->{ack} or $hash->{IODev}->{ack});
+            sendClientMessage($hash,
+              childId => $childId,
+              cmd => C_SET,
+              subType => $type,
+              payload => $mappedValue,
+        );
+        readingsSingleUpdate($hash,$setcommand->{var},$setcommand->{val},1) unless ($hash->{ack} or $hash->{IODev}->{ack});
     };
         return "$command not defined: ".GP_Catch($@) if $@;
         last;
@@ -386,12 +385,12 @@ sub onStreamMessage($$) {
         readingsEndUpdate($hash, 1);
         Log3($name, 4, "$name: received ST_FIRMWARE_CONFIG_REQUEST");
         if ((AttrVal($name, "OTA_autoUpdate", 0) == 1) && ($blVersion eq "3.0" or $blType eq "Optiboot")) {
-	  Log3($name, 4, "$name: Optiboot BL, Node set to OTA_autoUpdate => calling firmware update procedure");
-	  flashFirmware($hash, $fwType);
-        } elsif ($blType eq "MYSBootloader") {
-	  Log3($name, 4, "$name: MYSBootloader asking for firmware update, calling firmware update procedure");
-	  $fwType = ReadingsVal($name, "FW_TYPE", "unknown");
-	  flashFirmware($hash, $fwType);
+          Log3($name, 4, "$name: Optiboot BL, Node set to OTA_autoUpdate => calling firmware update procedure");
+          flashFirmware($hash, $fwType);
+        } elsif ($blType eq "MYSBootloader" && $hash->{flashProcedureStatus} == 1) {
+          Log3($name, 4, "$name: MYSBootloader asking for firmware update, calling firmware update procedure");
+          $fwType = ReadingsVal($name, "FW_TYPE", "unknown");
+          flashFirmware($hash, $fwType);
         }
     } else {
         Log3($name, 2, "$name: Failed to parse ST_FIRMWARE_CONFIG_REQUEST - expected payload length 32 but retrieved ".length($msg->{payload}));
@@ -407,17 +406,25 @@ sub onStreamMessage($$) {
           my $payload = $msg->{payload};
           my @fwData = @{$hash->{FW_DATA}};
           Log3($name, 5, "$name: Firmware block request $block (type $fwType, version $version)");
-	  readingsSingleUpdate($hash, 'FW_VERSION', $version, 1) if ($block == 0);
+          
           for (my $index = $fromIndex; $index < $fromIndex + 16; $index++) {
-	    $payload = $payload . sprintf("%02X", $fwData[$index]);
+            $payload = $payload . sprintf("%02X", $fwData[$index]);
           }
           if (defined $hash->{OTA_Chan76_IODev}) {
-	   sendMessage($hash->{OTA_Chan76_IODev}, radioId => $hash->{radioId}, childId => 255, ack => 0, cmd => C_STREAM, subType => ST_FIRMWARE_RESPONSE, payload => $payload);
+            sendMessage($hash->{OTA_Chan76_IODev}, radioId => $hash->{radioId}, childId => 255, ack => 0, cmd => C_STREAM, subType => ST_FIRMWARE_RESPONSE, payload => $payload);
           } else {
-	   sendClientMessage($hash, childId => 255, cmd => C_STREAM, ack => 0, subType => ST_FIRMWARE_RESPONSE, payload => $payload);
+            sendClientMessage($hash, childId => 255, cmd => C_STREAM, ack => 0, subType => ST_FIRMWARE_RESPONSE, payload => $payload);
           }
           readingsSingleUpdate($hash, "state", "updating", 1) unless ($hash->{STATE} eq "updating");
-        } else {
+          readingsSingleUpdate($hash, "state", "update done", 1) if ($block == 0);
+          if ($block == 0 && $blType ne "Optiboot") {
+	    readingsSingleUpdate($hash, 'FW_VERSION', $version, 1);
+	    if (defined $hash->{flashProcedureStatus}){
+	      undef $hash->{flashProcedureStatus};
+              delete $hash->{flashProcedureStatus};
+            }
+          }
+	} else {
           Log3($name, 2, "$name: Failed to parse ST_FIRMWARE_REQUEST - expected payload length 12 but retrieved ".length($msg->{payload}));
         }
         last;
@@ -520,11 +527,11 @@ sub Attr($$$$) {
         my $readingsForId = $readingMappings->{$id};
         foreach my $type (keys %$readingsForId) {
         if (($readingsForId->{$type}->{name} // "") eq $1) {
-	delete $readingsForId->{$type};
-	unless (keys %$readingsForId) {
-	    delete $readingMappings->{$id};
-	}
-	last FIND;
+    delete $readingsForId->{$type};
+    unless (keys %$readingsForId) {
+        delete $readingMappings->{$id};
+    }
+    last FIND;
         }
         }
     }
@@ -534,9 +541,9 @@ sub Attr($$$$) {
         if (my @match = grep {$typeMappings->{$_}->{type} eq $typeStr} keys %$typeMappings) {
         my $type = shift @match;
         $readingMappings->{$id}->{$type}->{name} = $1;
-	if (@values) {
-	    $readingMappings->{$id}->{$type}->{val} = {map {$_ =~ /^(.+):(.+)$/; $1 => $2} @values}; #TODO range?
-	}
+    if (@values) {
+        $readingMappings->{$id}->{$type}->{val} = {map {$_ =~ /^(.+):(.+)$/; $1 => $2} @values}; #TODO range?
+    }
         } else {
         return "unknown reading type $typeStr";
         }
@@ -608,55 +615,55 @@ sub onPresentationMessage($$) {
     my @ret = ();
     foreach my $type (@{$sensorMappings->{sends}}) {
         if (defined $readingMappings->{$id}->{$type}) {
-	next unless defined $hash->{getCommentReadings};
-	next unless $hash->{getCommentReadings} eq "2";
+    next unless defined $hash->{getCommentReadings};
+    next unless $hash->{getCommentReadings} eq "2";
         }
         my $typeStr = $typeMappings->{$type}->{type};
         if ($hash->{IODev}->{'inclusion-mode'}) {
-	if ($msg->{payload} ne "" and $hash->{getCommentReadings} eq "2") {
-	    $idStr = "_".$msg->{payload};
-	    $idStr =~ s/\:/\./g; #replace illegal characters
-	    $idStr =~ s/[^A-Za-z\d_\.-]+/_/g;
-	}
-	if (defined (my $mapping = $hash->{readingMappings}->{$id}->{$type})) {
-	    if ($mapping->{name} ne "$typeStr$idStr" and $hash->{getCommentReadings} eq "2"and $msg->{payload} ne "") {
-	    my $oldMappingName = $mapping->{name}; 
-	    CommandDeleteAttr(undef, "$hash->{NAME} mapReading_$oldMappingName");
-	    CommandDeleteReading(undef,"$hash->{NAME} $oldMappingName");
-	    Log3 ($hash->{NAME}, 3, "MYSENSORS_DEVICE $hash->{NAME}: Deleted Reading $oldMappingName");
-	    }
-	}
-	if (my $ret = CommandAttr(undef,"$name mapReading_$typeStr$idStr $id $typeStr")) {
-	    push @ret,$ret;
-	}
+    if ($msg->{payload} ne "" and $hash->{getCommentReadings} eq "2") {
+        $idStr = "_".$msg->{payload};
+        $idStr =~ s/\:/\./g; #replace illegal characters
+        $idStr =~ s/[^A-Za-z\d_\.-]+/_/g;
+    }
+    if (defined (my $mapping = $hash->{readingMappings}->{$id}->{$type})) {
+        if ($mapping->{name} ne "$typeStr$idStr" and $hash->{getCommentReadings} eq "2"and $msg->{payload} ne "") {
+        my $oldMappingName = $mapping->{name}; 
+        CommandDeleteAttr(undef, "$hash->{NAME} mapReading_$oldMappingName");
+        CommandDeleteReading(undef,"$hash->{NAME} $oldMappingName");
+        Log3 ($hash->{NAME}, 3, "MYSENSORS_DEVICE $hash->{NAME}: Deleted Reading $oldMappingName");
+        }
+    }
+    if (my $ret = CommandAttr(undef,"$name mapReading_$typeStr$idStr $id $typeStr")) {
+        push @ret,$ret;
+    }
         } else {
-	push @ret,"no mapReading for $id, $typeStr";
+    push @ret,"no mapReading for $id, $typeStr";
         }
     }
     foreach my $type (@{$sensorMappings->{receives}}) {
         my $typeMapping = $typeMappings->{$type};
         my $typeStr = $typeMapping->{type};
         if ($msg->{payload} ne "" and $hash->{getCommentReadings} eq "2") {
-	$idStr = "_".$msg->{payload};
-	$idStr =~ s/\:/\./g; #replace illegal characters
-	$idStr =~ s/[^A-Za-z\d_\.-]+/_/g;
+    $idStr = "_".$msg->{payload};
+    $idStr =~ s/\:/\./g; #replace illegal characters
+    $idStr =~ s/[^A-Za-z\d_\.-]+/_/g;
         }
         if (defined $hash->{sets}->{"$typeStr$idStr"}) {
-	next unless $hash->{getCommentReadings} eq "2";
-	###hier müssten die Set-Einträge gelöscht werden
+    next unless $hash->{getCommentReadings} eq "2";
+    ###hier müssten die Set-Einträge gelöscht werden
         }
         if ($hash->{IODev}->{'inclusion-mode'}) {
-	my @values = ();
-	if ($typeMapping->{range}) {
-	    @values = ('slider',$typeMapping->{range}->{min},$typeMapping->{range}->{step},$typeMapping->{range}->{max});
-	} elsif ($typeMapping->{val}) {
-	    @values = values %{$typeMapping->{val}};
-	}
-	if (my $ret = CommandAttr(undef,"$name setReading_$typeStr$idStr".(@values ? " ".join (",",@values) : ""))) {
-	    push @ret,$ret;
-	} else {
-	    push @ret,"no setReading for $id, $typeStr";
-	}
+    my @values = ();
+    if ($typeMapping->{range}) {
+        @values = ('slider',$typeMapping->{range}->{min},$typeMapping->{range}->{step},$typeMapping->{range}->{max});
+    } elsif ($typeMapping->{val}) {
+        @values = values %{$typeMapping->{val}};
+    }
+    if (my $ret = CommandAttr(undef,"$name setReading_$typeStr$idStr".(@values ? " ".join (",",@values) : ""))) {
+        push @ret,$ret;
+    } else {
+        push @ret,"no setReading for $id, $typeStr";
+    }
         }
         Log3 ($hash->{NAME}, 4, "MYSENSORS_DEVICE $hash->{NAME}: errors on C_PRESENTATION-message for childId $id, subType ".sensorTypeToStr($nodeType)." ".join (", ",@ret)) if @ret;
     }
@@ -765,12 +772,12 @@ sub onInternalMessage($$) {
         readingsSingleUpdate($hash, "SKETCH_NAME", $msg->{payload}, 1);
         #undef $hash->{FW_DATA}; # enable this to free memory?
         #delete $hash->{FW_DATA};
-	if (defined $hash->{getCommentReadings}){
+    if (defined $hash->{getCommentReadings}){
         if ($hash->{getCommentReadings} eq "1") {
-	        $hash->{getCommentReadings} = 2 ;
-	    }elsif ($hash->{getCommentReadings} eq "2") {
-	undef $hash->{getCommentReadings};
-	        delete $hash->{getCommentReadings};
+            $hash->{getCommentReadings} = 2 ;
+        }elsif ($hash->{getCommentReadings} eq "2") {
+    undef $hash->{getCommentReadings};
+            delete $hash->{getCommentReadings};
         }
     }
         last;
@@ -934,7 +941,7 @@ sub sendClientMessage($%) {
         #my $referencetype = ref $messages;
         #Log3 ($name,4,"$name: Reference type is $referencetype.");
         @$messages = grep {
-	$_->{childId} != $msg{childId}
+    $_->{childId} != $msg{childId}
             or $_->{cmd}     != $msg{cmd}
             or $_->{subType} != $msg{subType}
         } @$messages;
@@ -1044,7 +1051,7 @@ sub flashFirmware($$) {
         $crc ^= $fwdata[$index] & 0xFF;
         for (my $bit = 0; $bit < 8; ++$bit) {
         if (($crc & 0x01) == 0x01) {
-	$crc = (($crc >> 1) ^ 0xA001);
+    $crc = (($crc >> 1) ^ 0xA001);
             } else {
             $crc = ($crc >> 1);
         }
@@ -1113,7 +1120,7 @@ sub timeoutMySTimer($) {
             readingsSingleUpdate($hash,"state","NACK",1) ;
         } else {
         Log3 $name, 4, "$name: timeoutMySTimer called ($calltype), no outstanding Acks for Node";
-	    readingsSingleUpdate($hash,"state","alive",1) if ($hash->{STATE} eq "NACK");
+        readingsSingleUpdate($hash,"state","alive",1) if ($hash->{STATE} eq "NACK");
         }
     } elsif ($calltype eq "timeoutAwake") {
     readingsSingleUpdate($hash,"state","asleep",1) unless ($hash->{STATE} eq "NACK");
