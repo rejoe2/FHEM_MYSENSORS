@@ -362,6 +362,7 @@ sub Get($@) {
         last;
     };
     }
+	return undef;
 }
 
 sub onStreamMessage($$) {
