@@ -276,7 +276,7 @@ sub Set($@) {
           Log3 ($name,4,"Startet flashing Firmware: Optiboot method");
           return flashFirmware($hash, $fwType);
         } elsif ($blType eq "MYSBootloader") {
-          $hash->{flashProcedureStatus} = 1;
+          $hash->{OTA_requested} = 1;
           Log3 ($name,4,"Send reboot command to MYSBootloader node to start update");
           sendClientMessage($hash, childId => 255, cmd => C_INTERNAL, ack => 1, subType => I_REBOOT);
         } else {
@@ -387,7 +387,7 @@ sub onStreamMessage($$) {
         if ((AttrVal($name, "OTA_autoUpdate", 0) == 1) && ($blVersion eq "3.0" or $blType eq "Optiboot")) {
           Log3($name, 4, "$name: Optiboot BL, Node set to OTA_autoUpdate => calling firmware update procedure");
           flashFirmware($hash, $fwType);
-        } elsif ($blType eq "MYSBootloader" && $hash->{flashProcedureStatus} == 1) {
+        } elsif ($blType eq "MYSBootloader" && $hash->{OTA_requested} == 1) {
           Log3($name, 4, "$name: MYSBootloader asking for firmware update, calling firmware update procedure");
           $fwType = ReadingsVal($name, "FW_TYPE", "unknown");
           flashFirmware($hash, $fwType);
@@ -418,10 +418,11 @@ sub onStreamMessage($$) {
           readingsSingleUpdate($hash, "state", "updating", 1) unless ($hash->{STATE} eq "updating");
           readingsSingleUpdate($hash, "state", "update done", 1) if ($block == 0);
           if ($block == 0 && $blType ne "Optiboot") {
-	    readingsSingleUpdate($hash, 'FW_VERSION', $version, 1);
-	    if (defined $hash->{flashProcedureStatus}){
-	      undef $hash->{flashProcedureStatus};
-              delete $hash->{flashProcedureStatus};
+	        readingsSingleUpdate($hash, 'FW_VERSION', $version, 1);
+	        if (defined $hash->{OTA_requested}){
+	          #undef $hash->{OTA_requested};
+              delete $hash->{OTA_requested};
+			  #delete $hash->{FW_DATA}
             }
           }
 	} else {
@@ -771,12 +772,12 @@ sub onInternalMessage($$) {
         readingsSingleUpdate($hash, "state", "received presentation", 1) unless ($hash->{STATE} eq "received presentation");
         readingsSingleUpdate($hash, "SKETCH_NAME", $msg->{payload}, 1);
         #undef $hash->{FW_DATA}; # enable this to free memory?
-        #delete $hash->{FW_DATA};
+        delete $hash->{FW_DATA} if (defined $hash->{FW_DATA});
     if (defined $hash->{getCommentReadings}){
         if ($hash->{getCommentReadings} eq "1") {
             $hash->{getCommentReadings} = 2 ;
         }elsif ($hash->{getCommentReadings} eq "2") {
-    undef $hash->{getCommentReadings};
+			undef $hash->{getCommentReadings};
             delete $hash->{getCommentReadings};
         }
     }
@@ -892,7 +893,7 @@ sub onInternalMessage($$) {
         sendClientMessage($hash, cmd => C_INTERNAL, ack => 0, subType => I_SIGNAL_REPORT_REQUEST, payload => "U");
         } elsif ($subSet == 7) {
         readingsSingleUpdate($hash, "R_Uplink_Quality", $msg->{payload}, 1) if ($msg->{payload} ne "-256" );
-        undef $hash->{I_RSSI};
+        #undef $hash->{I_RSSI};
         delete $hash->{I_RSSI}; 
         }
         last;
